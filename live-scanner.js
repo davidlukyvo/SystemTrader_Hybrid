@@ -1642,13 +1642,6 @@ async function run(progressCb = null, opts = {}) {
       };
     });
 
-    const fetchFailSignals = fetchFailedMeta.map(meta => ({
-      id: `sig-fetch-fail-${meta.symbol}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      scanId: scanRecord.id,
-      symbol: String(meta.symbol || '').replace(/USDT$/i, ''),
-      timestamp: Date.now(),
-      status: 'FETCH_FAIL',
-      signalType: meta.failureType === 'transient' ? 'fetch_fail_transient' : 'fetch_fail',
       classification: 'fetch_fail',
       playable: false,
       learningEligible: true,
@@ -1663,10 +1656,6 @@ async function run(progressCb = null, opts = {}) {
       chartEntryQuality: 'unknown',
       entryTiming: 'unknown',
       smartMoneyScore: 0,
-      rejectReason: meta.failureType === 'transient' ? 'fetch_fail_transient' : 'fetch_fail_permanent',
-      rejectSeverity: meta.failureType === 'transient' ? 'soft' : 'info',
-      fetchFailType: meta.failureType || 'unknown',
-      fetchAttempts: Number(meta.attempts || 1),
       outcomesEvaluated: [],
     }));
 

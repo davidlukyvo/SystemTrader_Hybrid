@@ -359,16 +359,6 @@ window.PRO_EDGE = (() => {
       matchingTradables: matchingTradables.length,
       hardBlock: gate.disabled || !suggestedCoin,
       learningSamples: dbSetupLearning.reduce((s, x) => s + Number(x.samples || 0), 0),
-      learningDataset: {
-        schemaVersion: outcomeLearningDataset.schemaVersion,
-        generatedAt: outcomeLearningDataset.generatedAt,
-        halfLifeDays: outcomeLearningDataset.halfLifeDays,
-        minSetupSamples: outcomeLearningDataset.minSetupSamples,
-        totalSignals: outcomeLearningDataset.totalSignals,
-        totalOutcomes: outcomeLearningDataset.totalOutcomes,
-        eligibleOutcomes: outcomeLearningDataset.eligibleOutcomes,
-        signalClassDistribution: outcomeLearningDataset.signalDataset?.byClassification || null,
-      },
       learningBySetup: dbSetupLearning,
       learningTop: dbSetupLearning.slice(0, 5),
     };
