@@ -8,17 +8,18 @@ function getPlanGateInfo(c) {
   const tp1 = parseFloat($('planTp1')?.value);
   const risk = (entry && stop) ? Math.abs(entry - stop) : 0;
   const rr1 = (entry && stop && tp1 && risk) ? ((tp1 - entry) / risk) : 0;
-  const setupKey = String(c?.setup || c?.structureTag || '').toLowerCase();
-  const invalidSetup = !c || !setupKey || setupKey.includes('no setup') || setupKey.includes('unknown');
+  const execCheck = window.EXEC_GATE?.isExecutable
+    ? window.EXEC_GATE.isExecutable(c, { requirePlayable: true, minRR: 1.2, minConfidence: 0.5 })
+    : { ok: !!c };
   const rrBlocked = !rr1 || rr1 < 1.2;
   const gateBlocked = !!snap?.disableTrading;
   const suggestedMismatch = snap?.suggestedSymbol && c?.symbol && String(snap.suggestedSymbol) !== String(c.symbol) && (snap.gateMode === 'REDUCED' || snap.gateMode === 'ENABLED');
   let reason = '';
   if (gateBlocked) reason = snap?.gateReason || 'PRO EDGE tắt trade';
-  else if (invalidSetup) reason = 'Coin chưa có playable setup';
+  else if (!execCheck.ok) reason = `Coin chưa executable (${execCheck.reason})`;
   else if (rrBlocked) reason = 'RR dưới 1.2';
   else if (suggestedMismatch) reason = `PRO EDGE đang ưu tiên ${snap.suggestedSymbol}`;
-  return { blocked: gateBlocked || invalidSetup || rrBlocked, reason, rr1: Number(rr1 || 0).toFixed(2) };
+  return { blocked: gateBlocked || !execCheck.ok || rrBlocked, reason, rr1: Number(rr1 || 0).toFixed(2) };
 }
 
 function renderPlan() {
