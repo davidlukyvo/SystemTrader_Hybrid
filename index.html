@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>System Trader – Wyckoff/VSA Dashboard</title>
+  <meta name="description" content="Hệ thống giao dịch crypto chuyên nghiệp dựa trên Wyckoff, VSA, Fibonacci và EMA. Tìm coin chưa pump, vào đúng điểm, bảo vệ vốn." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon">⚡</div>
+      <div class="brand-text">
+        <span class="brand-name">System Trader</span>
+        <span class="brand-sub">Wyckoff · VSA · EMA</span>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">CORE</div>
+      <a class="nav-item active" data-page="dashboard" href="#dashboard">
+        <span class="nav-icon">🏠</span><span>Dashboard</span>
+      </a>
+      <a class="nav-item" data-page="scanner" href="#scanner">
+        <span class="nav-icon">🔍</span><span>Coin Scanner</span>
+      </a>
+      <a class="nav-item" data-page="scorer" href="#scorer">
+        <span class="nav-icon">🎯</span><span>Coin Scorer</span>
+      </a>
+      <a class="nav-item" data-page="watchlist" href="#watchlist">
+        <span class="nav-icon">👁</span><span>Watchlist</span>
+      </a>
+
+      <div class="nav-section-label">TRADE</div>
+      <a class="nav-item" data-page="models" href="#models">
+        <span class="nav-icon">📐</span><span>Entry Models</span>
+      </a>
+      <a class="nav-item" data-page="plan" href="#plan">
+        <span class="nav-icon">📋</span><span>Trade Plan</span>
+      </a>
+      <a class="nav-item" data-page="risk" href="#risk">
+        <span class="nav-icon">🛡</span><span>Risk Calc</span>
+      </a>
+      <a class="nav-item" data-page="checklist" href="#checklist">
+        <span class="nav-icon">✅</span><span>Checklist</span>
+      </a>
+
+      <div class="nav-section-label">LOG</div>
+      <a class="nav-item" data-page="journal" href="#journal">
+        <span class="nav-icon">📓</span><span>Journal</span>
+      </a>
+      <a class="nav-item" data-page="signals" href="#signals">
+        <span class="nav-icon">🧠</span><span>Signal History</span>
+      </a>
+      <a class="nav-item" data-page="analytics" href="#analytics">
+        <span class="nav-icon">📊</span><span>Analytics</span>
+      </a>
+      <a class="nav-item" data-page="scan-history" href="#scan-history">
+        <span class="nav-icon">🕐</span><span>Scan History</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="btc-context-badge" id="btcBadgeSidebar">
+        <span class="btc-dot"></span>
+        <span id="btcBadgeText">BTC: Sideway</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="main-content" id="mainContent">
+    <div id="page-dashboard" class="page active"></div>
+    <div id="page-scanner" class="page"></div>
+    <div id="page-scorer" class="page"></div>
+    <div id="page-watchlist" class="page"></div>
+    <div id="page-models" class="page"></div>
+    <div id="page-plan" class="page"></div>
+    <div id="page-risk" class="page"></div>
+    <div id="page-checklist" class="page"></div>
+    <div id="page-journal" class="page"></div>
+    <div id="page-signals" class="page"></div>
+    <div id="page-analytics" class="page"></div>
+    <div id="page-scan-history" class="page"></div>
+  </main>
+
+  <script src="db.js"></script>
+  <script src="state.js"></script>
+  <script src="coingecko.js"></script>
+  <script src="symbol-mapper.js"></script>
+  <script src="binance-market-data.js"></script>
+  <script src="live-scanner.js"></script>
+  <script src="outcome-evaluator.js"></script>
+  <script src="pro-edge.js"></script>
+  <script src="pages/dashboard.js"></script>
+  <script src="pages/scanner.js"></script>
+  <script src="pages/scorer.js"></script>
+  <script src="pages/models.js"></script>
+  <script src="pages/plan.js"></script>
+  <script src="pages/risk.js"></script>
+  <script src="pages/checklist.js"></script>
+  <script src="pages/journal.js"></script>
+  <script src="pages/watchlist.js"></script>
+  <script src="pages/signals.js"></script>
+  <script src="pages/analytics.js"></script>
+  <script src="pages/scan-history.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
