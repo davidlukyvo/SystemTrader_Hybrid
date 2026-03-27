@@ -90,6 +90,42 @@ window.PRO_EDGE = (() => {
       };
     }
     const [signals, outcomes] = await Promise.all([DB.getSignals({}), DB.getOutcomes({})]);
+    const signalLearning = window.LEARNING_ENGINE?.buildDataset
+      ? window.LEARNING_ENGINE.buildDataset(signals)
+      : null;
+    const linked = window.OUTCOME_LINKER?.linkSignalsToOutcomes
+      ? window.OUTCOME_LINKER.linkSignalsToOutcomes(signals, outcomes, {
+          halfLifeDays: LEARNING_CFG.halfLifeDays,
+          minSamples: LEARNING_CFG.minSetupSamples,
+        })
+      : null;
+    if (linked && Array.isArray(linked.setupPerformance)) {
+      return {
+        schemaVersion: linked.schemaVersion || 'v8.5-signal-outcome-link',
+        generatedAt: linked.generatedAt || Date.now(),
+        halfLifeDays: linked.halfLifeDays || LEARNING_CFG.halfLifeDays,
+        minSetupSamples: linked.minSamples || LEARNING_CFG.minSetupSamples,
+        totalSignals: signalLearning?.totalSignals ?? (signals || []).length,
+        totalOutcomes: (outcomes || []).length,
+        eligibleOutcomes: linked.linkedRows ? linked.linkedRows.length : 0,
+        signalDataset: signalLearning || undefined,
+        setups: linked.setupPerformance.map(s => ({
+          setup: s.setup,
+          samples: s.samples,
+          decayWeightedSamples: s.decayWeightedSamples,
+          winRate: s.winRate,
+          avgR: s.avgR,
+          expectedR: s.expectedR,
+          rrDrift: s.rrDrift,
+          outcomeScore: s.outcomeScore,
+          profitFactor: s.profitFactor,
+          adaptiveConfidence: s.adaptiveConfidence,
+          minSampleQualified: s.minSampleQualified,
+          edgeBoost: Number(clamp(0.84 + (s.winRate / 100) * 0.44 + clamp(Number(s.avgR || 0) * 0.10, -0.12, 0.18), 0.75, 1.25).toFixed(3)),
+          horizons: s.horizons,
+        })),
+      };
+    }
     const signalMap = new Map((signals || []).map(s => [s.id, s]));
     const grouped = new Map();
     let eligibleOutcomes = 0;
@@ -141,6 +177,12 @@ window.PRO_EDGE = (() => {
   }
 
   function mergeSetupLearning(baseStats, dbLearning) {
+    if (window.EDGE_ADAPTER?.adaptSetupStats) {
+      return window.EDGE_ADAPTER.adaptSetupStats(baseStats || [], dbLearning || [], {
+        impactCap: 0.35,
+        minSamples: LEARNING_CFG.minSetupSamples,
+      });
+    }
     const dbMap = new Map((dbLearning || []).map(x => [normalizeSetupSafe(x.setup), x]));
     return (baseStats || []).map(s => {
       const key = normalizeSetupSafe(s.setup);
@@ -325,6 +367,7 @@ window.PRO_EDGE = (() => {
         totalSignals: outcomeLearningDataset.totalSignals,
         totalOutcomes: outcomeLearningDataset.totalOutcomes,
         eligibleOutcomes: outcomeLearningDataset.eligibleOutcomes,
+        signalClassDistribution: outcomeLearningDataset.signalDataset?.byClassification || null,
       },
       learningBySetup: dbSetupLearning,
       learningTop: dbSetupLearning.slice(0, 5),
