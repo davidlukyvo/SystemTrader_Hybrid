@@ -30,7 +30,11 @@ async function renderSignals() {
 
   const latestScan = (scans || [])[0] || null;
   const setupCounts = {};
-  for (const s of (signals || [])) setupCounts[s.setup || 'unknown'] = (setupCounts[s.setup || 'unknown'] || 0) + 1;
+  for (const s of (signals || [])) {
+    const cls = String(s.classification || s.signalType || '').toLowerCase();
+    if (cls.startsWith('fetch_fail')) continue; // diagnostics only, do not overstate setup summary
+    setupCounts[s.setup || 'unknown'] = (setupCounts[s.setup || 'unknown'] || 0) + 1;
+  }
   const topSetups = Object.entries(setupCounts).sort((a,b)=>b[1]-a[1]).slice(0,5);
 
   el.innerHTML = `

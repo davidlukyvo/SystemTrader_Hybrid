@@ -88,6 +88,13 @@ async function init() {
         const result = await OUTCOME_EVAL.runEvaluation();
         if (result.evaluated > 0) {
           console.log(`[INIT] Outcome evaluation: ${result.evaluated} checkpoints evaluated`);
+          if (window.PRO_EDGE?.rebuildAfterScan) {
+            try {
+              await window.PRO_EDGE.rebuildAfterScan();
+            } catch (edgeErr) {
+              console.warn('[INIT] PRO_EDGE rebuild after outcome eval failed:', edgeErr);
+            }
+          }
         }
       }
     } catch (err) {
