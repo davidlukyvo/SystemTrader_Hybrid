@@ -187,6 +187,33 @@ window.DB = (() => {
     return putRecords(STORES.signals, signalRecords);
   }
 
+  async function addScanWithSignalsAtomic(scanRecord, signalRecords = []) {
+    const db = await getDB();
+    const safeScan = Object.assign({}, scanRecord || {});
+    if (!safeScan.id) safeScan.id = `scan-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    if (!safeScan.timestamp) safeScan.timestamp = Date.now();
+
+    const safeSignals = (Array.isArray(signalRecords) ? signalRecords : []).map(s => {
+      const row = Object.assign({}, s || {});
+      if (!row.id) row.id = `sig-${row.symbol || 'UNK'}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      if (!row.timestamp) row.timestamp = Date.now();
+      if (!row.scanId) row.scanId = safeScan.id;
+      if (!Array.isArray(row.outcomesEvaluated)) row.outcomesEvaluated = [];
+      return row;
+    });
+
+    return new Promise((resolve, reject) => {
+      const t = db.transaction([STORES.scans, STORES.signals], 'readwrite');
+      const scanStore = t.objectStore(STORES.scans);
+      const signalStore = t.objectStore(STORES.signals);
+      scanStore.put(safeScan);
+      safeSignals.forEach(sig => signalStore.put(sig));
+      t.oncomplete = () => resolve({ scanId: safeScan.id, signalCount: safeSignals.length });
+      t.onerror = () => reject(t.error || new Error('Atomic scan+signal transaction failed'));
+      t.onabort = () => reject(t.error || new Error('Atomic scan+signal transaction aborted'));
+    });
+  }
+
   async function getSignals({ scanId, symbol, from, to, status, setup, limit } = {}) {
     let records;
     if (scanId) {
@@ -532,6 +559,7 @@ window.DB = (() => {
     getScans,
     getScanById,
     addSignals,
+    addScanWithSignalsAtomic,
     getSignals,
     getSignalById,
     updateSignal,
