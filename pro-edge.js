@@ -139,7 +139,14 @@ window.PRO_EDGE = (() => {
   function chooseSuggestedCoin(coins, bestSetup, mode) {
     const tradable = (coins || []).filter(actionableCoin);
     if (!tradable.length) return null;
-    const playable = tradable.filter(hasPlayableSetup);
+    const rrFloor = mode === 'REDUCED' ? 1.3 : 1.2;
+    const confFloor = mode === 'REDUCED' ? 0.55 : 0.5;
+    const playable = tradable.filter(c => {
+      const gate = window.EXEC_GATE?.isExecutable
+        ? window.EXEC_GATE.isExecutable(c, { requirePlayable: true, minRR: rrFloor, minConfidence: confFloor })
+        : { ok: hasPlayableSetup(c) && coinRR(c) >= rrFloor && Number(c?.executionConfidence || 0) >= confFloor };
+      return !!gate.ok;
+    });
     if (!playable.length) return null;
     const bestKey = bestSetup ? normalizeSetupSafe(bestSetup.setup) : '';
     const preferred = playable.filter(c => normalizeSetupSafe(c.setup || c.structureTag) === bestKey);
@@ -245,6 +252,7 @@ window.PRO_EDGE = (() => {
       matchingTradables: matchingTradables.length,
       hardBlock: gate.disabled || !suggestedCoin,
       learningSamples: dbSetupLearning.reduce((s, x) => s + Number(x.samples || 0), 0),
+      learningBySetup: dbSetupLearning,
       learningTop: dbSetupLearning.slice(0, 5),
     };
   }

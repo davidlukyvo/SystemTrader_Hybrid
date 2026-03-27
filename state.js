@@ -176,6 +176,63 @@ const ST = {
   }
 };
 
+/* ── Unified execution gate ───────────────────────────────── */
+window.EXEC_GATE = (() => {
+  function normalizeSetup(value) {
+    return String(value || '').trim().toLowerCase();
+  }
+
+  function hasHardReject(coin) {
+    if (!coin) return true;
+    if (coin.rejected || coin.status === 'AVOID') return true;
+    if (coin.fakePumpRisk === 'high') return true;
+    if (coin.chartEntryQuality === 'structure_risk') return true;
+    const entry = Number(coin.entry || coin.price || 0);
+    const stop = Number(coin.stop || 0);
+    if (Number.isFinite(entry) && entry > 0) {
+      const stopInvalid = !Number.isFinite(stop) || stop <= 0 || stop >= entry || Math.abs(entry - stop) < entry * 0.003;
+      if (stopInvalid) return true;
+    }
+    const reasons = Array.isArray(coin.rejectReasons) ? coin.rejectReasons : [];
+    return reasons.some(r => /fake_pump_high|invalid_stop|blowoff|structure_risk|chart_structure_risk/i.test(String(r || '')));
+  }
+
+  function hasPlayableSetup(coin) {
+    const key = normalizeSetup(coin?.setup || coin?.structureTag);
+    if (!key) return false;
+    if (key.includes('unknown') || key.includes('no setup') || key.includes('early watch')) return false;
+    return true;
+  }
+
+  function isExecutable(coin, context = {}) {
+    const {
+      minRR = 1.2,
+      minConfidence = 0.5,
+      requirePlayable = true,
+    } = context || {};
+
+    if (!coin) return { ok: false, reason: 'missing_coin' };
+    if (hasHardReject(coin)) return { ok: false, reason: 'hard_reject' };
+    if (!hasPlayableSetup(coin)) return { ok: false, reason: 'invalid_setup' };
+
+    const status = String(coin.status || '').toUpperCase();
+    const playableStatus = ['READY', 'SCALP_READY', 'PLAYABLE'];
+    const executableStatus = ['READY', 'SCALP_READY', 'PLAYABLE', 'PROBE'];
+    if (requirePlayable && !playableStatus.includes(status)) return { ok: false, reason: 'status_not_playable' };
+    if (!requirePlayable && !executableStatus.includes(status)) return { ok: false, reason: 'status_not_executable' };
+
+    const rr = Number(coin.rr || 0);
+    if (!Number.isFinite(rr) || rr < minRR) return { ok: false, reason: 'rr_too_low' };
+
+    const conf = Number(coin.executionConfidence || 0);
+    if (!Number.isFinite(conf) || conf < minConfidence) return { ok: false, reason: 'confidence_too_low' };
+
+    return { ok: true, reason: 'pass' };
+  }
+
+  return { isExecutable, hasHardReject };
+})();
+
 /* ── Utility helpers ─────────────────────────────────────── */
 const $ = id => document.getElementById(id);
 const el = (tag, cls, inner) => {
@@ -477,6 +534,49 @@ return {
   };
 }
 
+function getOutcomeLearningRows() {
+  const rows = ST.scanMeta?.proEdge?.learningBySetup || ST.scanMeta?.proEdge?.learningTop || [];
+  if (!Array.isArray(rows)) return [];
+  return rows
+    .map(r => ({
+      setup: normalizeSetupName(r?.setup || 'unknown'),
+      samples: Number(r?.samples || 0),
+      winRatePct: Number(r?.winRate || 0),
+      avgR: Number(r?.avgR || 0),
+      edgeBoost: Number(r?.edgeBoost || 1),
+    }))
+    .filter(r => r.samples > 0);
+}
+
+function blendSetupWithOutcomeLearning(base, outcomeLearning) {
+  if (!base || !outcomeLearning) return base;
+  const sampleWeight = Math.max(0, Math.min(0.45, outcomeLearning.samples / 80));
+  if (sampleWeight <= 0) return base;
+  const wrDb = Math.max(0, Math.min(100, outcomeLearning.winRatePct));
+  const wr = Math.round((base.wr * (1 - sampleWeight)) + (wrDb * sampleWeight));
+  const expectancyR = Number(((base.expectancyR * (1 - sampleWeight)) + (outcomeLearning.avgR * sampleWeight)).toFixed(2));
+  const edgeMultDb = Number.isFinite(outcomeLearning.edgeBoost) && outcomeLearning.edgeBoost > 0 ? outcomeLearning.edgeBoost : 1;
+  const edgeMultiplier = Number(Math.max(0.60, Math.min(1.70, ((base.edgeMultiplier * (1 - sampleWeight)) + (edgeMultDb * sampleWeight)))).toFixed(2));
+  const confidence = Number(Math.max(0.30, Math.min(0.98, base.confidence + Math.min(0.12, outcomeLearning.samples / 120))).toFixed(2));
+  const quality = Number(Math.max(0.50, Math.min(1.95, base.quality + ((edgeMultiplier - base.edgeMultiplier) * 0.18) + (sampleWeight * 0.08))).toFixed(2));
+  const profitFactor = Number(Math.max(0.50, Math.min(3.50, (base.profitFactor || 1) + ((expectancyR - base.expectancyR) * 0.25))).toFixed(2));
+  const edgeScore = Math.max(10, Math.min(100, Math.round(((expectancyR * Math.max(0.72, profitFactor) * (0.60 + confidence * 0.40)) * 42) + (edgeMultiplier - 1) * 18)));
+  return {
+    ...base,
+    wr,
+    winRate: Number((wr / 100).toFixed(2)),
+    expectancyR,
+    avgR: expectancyR,
+    edgeMultiplier,
+    confidence,
+    quality,
+    profitFactor,
+    edgeScore,
+    band: quantBand(edgeMultiplier),
+    outcomeSamples: outcomeLearning.samples,
+  };
+}
+
 function computeQuantStats() {
   const allRows = Array.isArray(ST.journal) ? ST.journal : [];
   const closed = allRows.filter(j => j.result && j.result !== 'open');
@@ -505,7 +605,7 @@ function computeQuantStats() {
   }
 
   const setupNames = new Set([...Object.keys(LEARNING_BASELINES), ...setupBuckets.keys()]);
-  const setupStats = [...setupNames].map((setup) => {
+  const setupStatsRaw = [...setupNames].map((setup) => {
     const rows = setupBuckets.get(setup) || [];
     const closedRows = rows.filter(j => j.result && j.result !== 'open');
     const vals = closedRows.map(journalRMultiple).filter(v => Number.isFinite(v));
@@ -540,22 +640,36 @@ function computeQuantStats() {
       band: blend.band,
       bootstrap: closedRows.length < (prior.prior || 0)
     };
-  }).sort((a,b) => (b.edgeMultiplier - a.edgeMultiplier) || (b.expectancyR - a.expectancyR));
+  });
+
+  const outcomeLearningRows = getOutcomeLearningRows();
+  const outcomeMap = new Map(outcomeLearningRows.map(r => [normalizeSetupName(r.setup), r]));
+  const setupStats = setupStatsRaw
+    .map(s => blendSetupWithOutcomeLearning(s, outcomeMap.get(normalizeSetupName(s.setup))))
+    .sort((a,b) => (b.edgeMultiplier - a.edgeMultiplier) || (b.expectancyR - a.expectancyR));
+
+  const totalOutcomeSamples = outcomeLearningRows.reduce((sum, r) => sum + Number(r.samples || 0), 0);
+  const weightedExpectancy = setupStats.reduce((sum, s) => sum + (Number(s.expectancyR || 0) * Math.max(1, Number(s.closed || 0) + Number(s.outcomeSamples || 0))), 0);
+  const weightedWins = setupStats.reduce((sum, s) => sum + (Number(s.wr || 0) * Math.max(1, Number(s.closed || 0) + Number(s.outcomeSamples || 0))), 0);
+  const weightedDen = setupStats.reduce((sum, s) => sum + Math.max(1, Number(s.closed || 0) + Number(s.outcomeSamples || 0)), 0);
+  const blendedGlobalExpectancy = weightedDen > 0 ? (weightedExpectancy / weightedDen) : globalBlend.expectancyR;
+  const blendedGlobalWr = weightedDen > 0 ? (weightedWins / weightedDen) : globalBlend.wr;
 
   return {
     totalClosed: closed.length,
     wins,
     losses,
     be,
-    winRate: globalBlend.wr,
-    expectancyR: globalBlend.expectancyR,
-    avgR: globalBlend.avgR,
+    winRate: Math.round(blendedGlobalWr),
+    expectancyR: Number(blendedGlobalExpectancy.toFixed(2)),
+    avgR: Number(blendedGlobalExpectancy.toFixed(2)),
     profitFactor: globalBlend.profitFactor,
     confidence: globalBlend.confidence,
     quality: globalBlend.quality,
     edgeScore: globalBlend.edgeScore,
-    learningMode: closed.length >= 12 ? 'trained' : closed.length >= 4 ? 'adaptive' : 'bootstrap',
-    learningActive: closed.length > 0,
+    learningMode: closed.length >= 12 ? 'trained' : (closed.length >= 4 || totalOutcomeSamples >= 6) ? 'adaptive' : 'bootstrap',
+    learningActive: closed.length > 0 || totalOutcomeSamples > 0,
+    outcomeLearningSamples: totalOutcomeSamples,
     setupStats
   };
 }
