@@ -3,6 +3,12 @@
    Best setup detection · dynamic risk multiplier · trade gate
    ══════════════════════════════════════════════════════════ */
 window.PRO_EDGE = (() => {
+  const LEARNING_CFG = {
+    halfLifeDays: 21,
+    minSetupSamples: 6,
+    priorWinRate: 0.50,
+    priorAvgR: 0.08,
+  };
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
   function pct(v) { return Math.round(Number(v || 0) * 100); }
   function actionableCoin(c) {
@@ -61,46 +67,141 @@ window.PRO_EDGE = (() => {
 
   async function getDBSetupLearning() {
     if (!window.DB) return [];
+    const dataset = await buildOutcomeLearningDataset();
+    return dataset.setups;
+  }
+
+  function decayWeight(ageMs, halfLifeDays = LEARNING_CFG.halfLifeDays) {
+    const halfLifeMs = Math.max(1, halfLifeDays) * 24 * 60 * 60 * 1000;
+    return Math.exp(-Math.LN2 * (Math.max(0, ageMs) / halfLifeMs));
+  }
+
+  async function buildOutcomeLearningDataset() {
+    if (!window.DB) {
+      return {
+        schemaVersion: 'v8.5-outcome-learning',
+        generatedAt: Date.now(),
+        halfLifeDays: LEARNING_CFG.halfLifeDays,
+        minSetupSamples: LEARNING_CFG.minSetupSamples,
+        totalSignals: 0,
+        totalOutcomes: 0,
+        eligibleOutcomes: 0,
+        setups: []
+      };
+    }
     const [signals, outcomes] = await Promise.all([DB.getSignals({}), DB.getOutcomes({})]);
+    const signalLearning = window.LEARNING_ENGINE?.buildDataset
+      ? window.LEARNING_ENGINE.buildDataset(signals)
+      : null;
+    const linked = window.OUTCOME_LINKER?.linkSignalsToOutcomes
+      ? window.OUTCOME_LINKER.linkSignalsToOutcomes(signals, outcomes, {
+          halfLifeDays: LEARNING_CFG.halfLifeDays,
+          minSamples: LEARNING_CFG.minSetupSamples,
+        })
+      : null;
+    if (linked && Array.isArray(linked.setupPerformance)) {
+      return {
+        schemaVersion: linked.schemaVersion || 'v8.5-signal-outcome-link',
+        generatedAt: linked.generatedAt || Date.now(),
+        halfLifeDays: linked.halfLifeDays || LEARNING_CFG.halfLifeDays,
+        minSetupSamples: linked.minSamples || LEARNING_CFG.minSetupSamples,
+        totalSignals: signalLearning?.totalSignals ?? (signals || []).length,
+        totalOutcomes: (outcomes || []).length,
+        eligibleOutcomes: linked.linkedRows ? linked.linkedRows.length : 0,
+        signalDataset: signalLearning || undefined,
+        setups: linked.setupPerformance.map(s => ({
+          setup: s.setup,
+          samples: s.samples,
+          decayWeightedSamples: s.decayWeightedSamples,
+          winRate: s.winRate,
+          avgR: s.avgR,
+          expectedR: s.expectedR,
+          rrDrift: s.rrDrift,
+          outcomeScore: s.outcomeScore,
+          profitFactor: s.profitFactor,
+          adaptiveConfidence: s.adaptiveConfidence,
+          minSampleQualified: s.minSampleQualified,
+          edgeBoost: Number(clamp(0.84 + (s.winRate / 100) * 0.44 + clamp(Number(s.avgR || 0) * 0.10, -0.12, 0.18), 0.75, 1.25).toFixed(3)),
+          horizons: s.horizons,
+        })),
+      };
+    }
     const signalMap = new Map((signals || []).map(s => [s.id, s]));
     const grouped = new Map();
+    let eligibleOutcomes = 0;
+    const now = Date.now();
     for (const outcome of (outcomes || [])) {
       const sig = signalMap.get(outcome.signalId);
       if (!sig) continue;
+      if (sig.learningEligible === false) continue;
       const setup = normalizeSetupSafe(sig.setup || 'unknown');
       if (!grouped.has(setup)) grouped.set(setup, []);
-      grouped.get(setup).push({ outcome, sig });
+      grouped.get(setup).push({ outcome, sig, weight: decayWeight(now - Number(outcome.evaluatedAt || now)) });
+      eligibleOutcomes++;
     }
-    return Array.from(grouped.entries()).map(([setup, rows]) => {
-      const wins = rows.filter(r => r.outcome.verdict === 'winner').length;
-      const avgR = rows.reduce((s, r) => s + Number(r.outcome.actualR || 0), 0) / Math.max(1, rows.length);
-      const winRate = rows.length ? wins / rows.length : 0;
-      const edgeBoost = clamp(0.85 + (winRate * 0.4) + Math.max(-0.10, Math.min(0.20, avgR * 0.08)), 0.75, 1.25);
+    const setups = Array.from(grouped.entries()).map(([setup, rows]) => {
+      const weightedSamples = rows.reduce((s, r) => s + Number(r.weight || 0), 0);
+      const weightedWins = rows.reduce((s, r) => s + ((r.outcome.verdict === 'winner') ? Number(r.weight || 0) : 0), 0);
+      const weightedR = rows.reduce((s, r) => s + (Number(r.outcome.actualR || 0) * Number(r.weight || 0)), 0);
+      const observedWinRate = weightedSamples > 0 ? (weightedWins / weightedSamples) : 0;
+      const observedAvgR = weightedSamples > 0 ? (weightedR / weightedSamples) : 0;
+
+      const confidenceWeight = clamp(weightedSamples / Math.max(1, LEARNING_CFG.minSetupSamples), 0, 1);
+      const shrunkenWinRate = (LEARNING_CFG.priorWinRate * (1 - confidenceWeight)) + (observedWinRate * confidenceWeight);
+      const shrunkenAvgR = (LEARNING_CFG.priorAvgR * (1 - confidenceWeight)) + (observedAvgR * confidenceWeight);
+      const edgeBoostRaw = 0.84 + (shrunkenWinRate * 0.44) + clamp(shrunkenAvgR * 0.10, -0.12, 0.18);
+      const edgeBoost = clamp(edgeBoostRaw, 0.75, 1.25);
+      const minSampleQualified = weightedSamples >= LEARNING_CFG.minSetupSamples;
       return {
         setup,
         samples: rows.length,
-        winRate: Math.round(winRate * 100),
-        avgR: Number(avgR.toFixed(2)),
-        edgeBoost: Number(edgeBoost.toFixed(2))
+        decayWeightedSamples: Number(weightedSamples.toFixed(2)),
+        winRate: Math.round(shrunkenWinRate * 100),
+        avgR: Number(shrunkenAvgR.toFixed(3)),
+        edgeBoost: Number(edgeBoost.toFixed(3)),
+        adaptiveConfidence: Number(clamp(0.25 + confidenceWeight * 0.75, 0.25, 0.98).toFixed(2)),
+        minSampleQualified,
       };
-    }).sort((a, b) => b.samples - a.samples);
+    }).sort((a, b) => (b.decayWeightedSamples - a.decayWeightedSamples) || (b.edgeBoost - a.edgeBoost));
+
+    return {
+      schemaVersion: 'v8.5-outcome-learning',
+      generatedAt: Date.now(),
+      halfLifeDays: LEARNING_CFG.halfLifeDays,
+      minSetupSamples: LEARNING_CFG.minSetupSamples,
+      totalSignals: (signals || []).length,
+      totalOutcomes: (outcomes || []).length,
+      eligibleOutcomes,
+      setups,
+    };
   }
 
   function mergeSetupLearning(baseStats, dbLearning) {
+    if (window.EDGE_ADAPTER?.adaptSetupStats) {
+      return window.EDGE_ADAPTER.adaptSetupStats(baseStats || [], dbLearning || [], {
+        impactCap: 0.35,
+        minSamples: LEARNING_CFG.minSetupSamples,
+      });
+    }
     const dbMap = new Map((dbLearning || []).map(x => [normalizeSetupSafe(x.setup), x]));
     return (baseStats || []).map(s => {
       const key = normalizeSetupSafe(s.setup);
       const learned = dbMap.get(key);
       if (!learned) return { ...s, learnedSamples: 0, learnedBoost: 1 };
-      const blendedEdge = Number((Number(s.edgeMultiplier || 1) * learned.edgeBoost).toFixed(2));
-      const blendedExp = Number((Number(s.expectancyR || 0) + (learned.avgR * Math.min(0.35, learned.samples / 40))).toFixed(2));
-      const blendedWr = Math.round((Number(s.wr || 0) * 0.65) + (Number(learned.winRate || 0) * 0.35));
+      const sampleWeight = clamp(Number(learned.decayWeightedSamples || learned.samples || 0) / 32, 0, 0.55);
+      const confidenceScale = clamp(Number(learned.adaptiveConfidence || 0.25), 0.25, 0.98);
+      const blendedEdge = Number((Number(s.edgeMultiplier || 1) * (1 - sampleWeight) + (Number(s.edgeMultiplier || 1) * learned.edgeBoost * sampleWeight)).toFixed(2));
+      const blendedExp = Number((Number(s.expectancyR || 0) * (1 - sampleWeight) + Number(learned.avgR || 0) * sampleWeight).toFixed(2));
+      const blendedWr = Math.round((Number(s.wr || 0) * (1 - sampleWeight)) + (Number(learned.winRate || 0) * sampleWeight));
       return {
         ...s,
         edgeMultiplier: blendedEdge,
         expectancyR: blendedExp,
         wr: blendedWr,
         learnedSamples: learned.samples,
+        learnedDecaySamples: learned.decayWeightedSamples,
+        learnedConfidence: confidenceScale,
+        learnedMinSampleQualified: !!learned.minSampleQualified,
         learnedBoost: learned.edgeBoost,
         learnedAvgR: learned.avgR,
       };
@@ -193,8 +294,14 @@ window.PRO_EDGE = (() => {
     const marketHealthScore = Number(insight.marketHealthScore || 0);
     const qualifiedCount = Number(insight.qualifiedCount || 0);
     const actionable = (ST.coins || []).filter(actionableCoin);
-    const playable = actionable.filter(hasPlayableSetup);
-    const dbSetupLearning = await getDBSetupLearning();
+    const playable = actionable.filter(c => {
+      const gate = window.EXEC_GATE?.isExecutable
+        ? window.EXEC_GATE.isExecutable(c, { requirePlayable: true, minRR: 1.2, minConfidence: 0.5 })
+        : { ok: hasPlayableSetup(c) };
+      return !!gate.ok;
+    });
+    const outcomeLearningDataset = await buildOutcomeLearningDataset();
+    const dbSetupLearning = outcomeLearningDataset.setups || [];
     const mergedSetups = mergeSetupLearning(quant.setupStats || [], dbSetupLearning);
     const bestSetup = chooseBestSetup(mergedSetups, btc);
     const outcomeStats = await getRecentOutcomeStats(20);
