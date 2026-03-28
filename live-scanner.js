@@ -110,6 +110,34 @@ window.LIVE_SCANNER = (() => {
     return { m15, h4, d1 };
   }
 
+  function isTransientFetchError(err) {
+    const msg = String(err?.message || err || '').toLowerCase();
+    return /429|5\d\d|network|timeout|temporar|busy|cooldown/.test(msg);
+  }
+
+  async function fetchMultiWithRetry(symbol, { maxAttempts = 3, baseDelayMs = 250 } = {}) {
+    let lastErr = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const klines = await fetchMulti(symbol);
+        return { ok: true, klines, attempts: attempt, failureType: null };
+      } catch (err) {
+        lastErr = err;
+        const transient = isTransientFetchError(err);
+        if (!transient || attempt >= maxAttempts) break;
+        const backoff = baseDelayMs * Math.pow(2, attempt - 1);
+        await sleep(backoff);
+      }
+    }
+    return {
+      ok: false,
+      klines: null,
+      attempts: maxAttempts,
+      error: lastErr,
+      failureType: isTransientFetchError(lastErr) ? 'transient' : 'permanent',
+    };
+  }
+
   async function detectBTCContext() {
     try {
       const rows = await fetchKlines('BTCUSDT', '4h', 120);
@@ -1367,17 +1395,31 @@ async function run(progressCb = null, opts = {}) {
 
   const results = [];
   const fetchFailedSymbols = [];
+  const fetchFailedMeta = [];
   const stabilityState = getStabilitySnapshot();
 
   for (let i = 0; i < candidates.length; i++) {
     const coin = candidates[i];
     try {
-      const klines = await fetchMulti(coin.symbol);
+      const fetchResult = await fetchMultiWithRetry(coin.symbol, { maxAttempts: 3, baseDelayMs: 250 });
+      if (!fetchResult.ok) {
+        fetchFailedSymbols.push(coin.symbol);
+        fetchFailedMeta.push({ symbol: coin.symbol, failureType: fetchResult.failureType || 'unknown', attempts: fetchResult.attempts || 1 });
+        const pct = 35 + Math.round(((i + 1) / Math.max(candidates.length, 1)) * 55);
+        progressCb?.(`Đang scan ${i + 1}/${candidates.length}: ${coin.symbol}`, pct);
+        await sleep(100);
+        continue;
+      }
+      const klines = fetchResult.klines;
       const row = deepScanCandidate(coin, klines, btcContext);
-      if (row?.error) fetchFailedSymbols.push(coin.symbol);
+      if (row?.error) {
+        fetchFailedSymbols.push(coin.symbol);
+        fetchFailedMeta.push({ symbol: coin.symbol, failureType: 'permanent', attempts: fetchResult.attempts || 1 });
+      }
       else if (row) results.push(row);
     } catch {
       fetchFailedSymbols.push(coin.symbol);
+      fetchFailedMeta.push({ symbol: coin.symbol, failureType: 'unknown', attempts: 1 });
     }
     const pct = 35 + Math.round(((i + 1) / Math.max(candidates.length, 1)) * 55);
     progressCb?.(`Đang scan ${i + 1}/${candidates.length}: ${coin.symbol}`, pct);
@@ -1389,6 +1431,9 @@ async function run(progressCb = null, opts = {}) {
   const sorted = ranked.sorted;
   const insight = buildInsight(sorted, stabilityState);
   const riskCut = getRiskCutFromHealth(insight.marketHealthScore || 0);
+  const adaptiveProfile = getSmartExecutionProfile(btcContext, insight.marketHealthScore || 0);
+  const adaptiveRRFloor = adaptiveProfile.unlockRRFloor;
+  const adaptiveConfFloor = adaptiveProfile.confFloor;
   sorted.forEach(c => {
     c.executionMode = c.executionMode || (((c.rr || 0) >= 1.35 && (c.relVol || 0) >= 1.35) ? 'EXPANSION' : (c.status === 'SCALP_READY' ? 'SCALP' : 'WATCH'));
     if (c.status === 'READY') {
@@ -1420,7 +1465,10 @@ async function run(progressCb = null, opts = {}) {
     const comboFloor = getSmartComboFloor(c.status);
     const rrWeak = (c.rr || 0) < rrFloor;
     const comboWeak = comboScore < comboFloor;
-    if (rrWeak || comboWeak) {
+    const execCheck = window.EXEC_GATE?.isExecutable
+      ? window.EXEC_GATE.isExecutable(c, { requirePlayable: false, minRR: rrFloor, minConfidence: c.status === 'PROBE' ? 0.40 : 0.45 })
+      : { ok: !rrWeak };
+    if (rrWeak || comboWeak || !execCheck.ok) {
       demoteForHardGate(c, rrWeak ? 'rr_suboptimal' : 'smart_filter_combo');
     } else {
       c.executionGatePassed = true;
@@ -1543,8 +1591,7 @@ async function run(progressCb = null, opts = {}) {
 
     const persistedCandidates = (sorted || [])
       .filter(c => c && c.symbol)
-      .filter(c => Number(c.score || c.riskAdjustedScore || c.edgeScore || 0) > 0 || ['READY','SCALP_READY','PLAYABLE','PROBE','EARLY','AVOID'].includes(c.status))
-      .slice(0, 30);
+      .filter(c => Number(c.score || c.riskAdjustedScore || c.edgeScore || 0) > 0 || ['READY','SCALP_READY','PLAYABLE','PROBE','EARLY','AVOID'].includes(c.status));
 
     const signalRecords = persistedCandidates.map(c => {
       const rejectReason = Array.isArray(c.rejectReasons) && c.rejectReasons.length ? c.rejectReasons[0] : (Array.isArray(c.warnings) && c.warnings.length ? c.warnings[0] : '');
@@ -1553,7 +1600,7 @@ async function run(progressCb = null, opts = {}) {
         : c.status === 'PROBE'
           ? 'probe'
           : c.status === 'EARLY'
-            ? 'watch'
+            ? ((Number(c.score || 0) >= 30 || (Array.isArray(c.warnings) && c.warnings.includes('scalp_from_near_miss'))) ? 'near_miss' : 'watch')
             : c.status === 'AVOID'
               ? 'reject'
               : 'candidate';
@@ -1575,6 +1622,7 @@ async function run(progressCb = null, opts = {}) {
         tp3: c.tp3 || 0,
         status: c.status || 'UNKNOWN',
         signalType,
+        classification: signalType,
         playable: ['READY','SCALP_READY','PLAYABLE'].includes(c.status),
         learningEligible: signalType !== 'candidate',
         setup: c.setup || c.structureTag || 'Unknown',
@@ -1594,10 +1642,47 @@ async function run(progressCb = null, opts = {}) {
       };
     });
 
+    const fetchFailSignals = fetchFailedMeta.map(meta => ({
+      id: `sig-fetch-fail-${meta.symbol}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      scanId: scanRecord.id,
+      symbol: String(meta.symbol || '').replace(/USDT$/i, ''),
+      timestamp: Date.now(),
+      status: 'FETCH_FAIL',
+      signalType: meta.failureType === 'transient' ? 'fetch_fail_transient' : 'fetch_fail',
+      classification: 'fetch_fail',
+      playable: false,
+      learningEligible: true,
+      setup: 'Fetch fail',
+      score: 0,
+      riskAdjustedScore: 0,
+      edgeScore: 0,
+      rr: 0,
+      executionConfidence: 0,
+      btcContext,
+      fakePumpRisk: 'unknown',
+      chartEntryQuality: 'unknown',
+      entryTiming: 'unknown',
+      smartMoneyScore: 0,
+      rejectReason: meta.failureType === 'transient' ? 'fetch_fail_transient' : 'fetch_fail_permanent',
+      rejectSeverity: meta.failureType === 'transient' ? 'soft' : 'info',
+      fetchFailType: meta.failureType || 'unknown',
+      fetchAttempts: Number(meta.attempts || 1),
+      outcomesEvaluated: [],
+    }));
+
+    const allSignalRecords = [...signalRecords, ...fetchFailSignals];
+
     // Fire-and-forget — do not block scanner return
-    DB.addScan(scanRecord)
-      .then(() => signalRecords.length ? DB.addSignals(signalRecords) : 0)
-      .then(n => console.log(`[SCANNER] Persisted scan + ${signalRecords.length} signals to IndexedDB`))
+    const atomicWrite = DB.addScanWithSignalsAtomic
+      ? DB.addScanWithSignalsAtomic(scanRecord, allSignalRecords)
+      : Promise.reject(new Error('addScanWithSignalsAtomic unavailable'));
+
+    atomicWrite
+      .catch(err => {
+        console.warn('[SCANNER] Atomic persist failed, fallback to non-atomic:', err);
+        return DB.addScan(scanRecord).then(() => allSignalRecords.length ? DB.addSignals(allSignalRecords) : 0);
+      })
+      .then(() => console.log(`[SCANNER] Persisted scan + ${allSignalRecords.length} signals to IndexedDB`))
       .catch(err => console.warn('[SCANNER] IndexedDB persist error:', err));
   }
 

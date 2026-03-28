@@ -1,5 +1,28 @@
 /* ── TRADE PLAN PAGE ─────────────────────────────────────── */
-let planState = { coinId: null };
+let planState = { coinId: null, coinSymbol: '' };
+
+function resolvePlanCoin({ preferSuggested = false } = {}) {
+  const byId = planState.coinId ? ST.coins.find(x => String(x.id) === String(planState.coinId)) : null;
+  if (byId) return byId;
+  const symInput = (planState.coinSymbol || $('planSym')?.value || '').trim().toUpperCase();
+  if (symInput) {
+    const bySym = ST.coins.find(x => String(x.symbol || '').toUpperCase() === symInput);
+    if (bySym) {
+      planState.coinId = bySym.id;
+      planState.coinSymbol = bySym.symbol;
+      return bySym;
+    }
+  }
+  if (preferSuggested) {
+    const suggested = window.PRO_EDGE?.getSuggestedCoin ? window.PRO_EDGE.getSuggestedCoin() : null;
+    if (suggested) {
+      planState.coinId = suggested.id;
+      planState.coinSymbol = suggested.symbol;
+      return suggested;
+    }
+  }
+  return null;
+}
 
 function getPlanGateInfo(c) {
   const snap = ST.scanMeta?.proEdge || null;
@@ -8,23 +31,24 @@ function getPlanGateInfo(c) {
   const tp1 = parseFloat($('planTp1')?.value);
   const risk = (entry && stop) ? Math.abs(entry - stop) : 0;
   const rr1 = (entry && stop && tp1 && risk) ? ((tp1 - entry) / risk) : 0;
-  const setupKey = String(c?.setup || c?.structureTag || '').toLowerCase();
-  const invalidSetup = !c || !setupKey || setupKey.includes('no setup') || setupKey.includes('unknown');
+  const execCheck = window.EXEC_GATE?.isExecutable
+    ? window.EXEC_GATE.isExecutable(c, { requirePlayable: true, minRR: 1.2, minConfidence: 0.5 })
+    : { ok: !!c };
   const rrBlocked = !rr1 || rr1 < 1.2;
   const gateBlocked = !!snap?.disableTrading;
   const suggestedMismatch = snap?.suggestedSymbol && c?.symbol && String(snap.suggestedSymbol) !== String(c.symbol) && (snap.gateMode === 'REDUCED' || snap.gateMode === 'ENABLED');
   let reason = '';
   if (gateBlocked) reason = snap?.gateReason || 'PRO EDGE tắt trade';
-  else if (invalidSetup) reason = 'Coin chưa có playable setup';
+  else if (!execCheck.ok) reason = `Coin chưa executable (${execCheck.reason})`;
   else if (rrBlocked) reason = 'RR dưới 1.2';
   else if (suggestedMismatch) reason = `PRO EDGE đang ưu tiên ${snap.suggestedSymbol}`;
-  return { blocked: gateBlocked || invalidSetup || rrBlocked, reason, rr1: Number(rr1 || 0).toFixed(2) };
+  return { blocked: gateBlocked || !execCheck.ok || rrBlocked, reason, rr1: Number(rr1 || 0).toFixed(2) };
 }
 
 function renderPlan() {
   const coins = ST.coins;
   const suggested = window.PRO_EDGE?.getSuggestedCoin ? window.PRO_EDGE.getSuggestedCoin() : null;
-  const c = planState.coinId ? ST.coins.find(x=>String(x.id)===String(planState.coinId)) : suggested;
+  const c = resolvePlanCoin({ preferSuggested: true }) || suggested;
 
   $('page-plan').innerHTML = `
   <div class="page-header">
@@ -183,7 +207,7 @@ function calcPlanRR() {
 
 
 function updatePlanGateUI() {
-  const c = planState.coinId ? ST.coins.find(x=>String(x.id)===String(planState.coinId)) : null;
+  const c = resolvePlanCoin({ preferSuggested: true });
   const info = getPlanGateInfo(c);
   const box = $('planGateNotice');
   const btn = $('savePlanBtn');
@@ -197,12 +221,13 @@ function updatePlanGateUI() {
 
 function loadPlanCoin(id) {
   planState.coinId = id;
+  const c = ST.coins.find(x => String(x.id) === String(id));
+  planState.coinSymbol = c?.symbol || planState.coinSymbol || '';
   renderPlan();
 }
 
 function autoGeneratePlan() {
-  if (!planState.coinId) return;
-  const c = ST.coins.find(x=>String(x.id)===String(planState.coinId));
+  const c = resolvePlanCoin({ preferSuggested: true });
   if (!c) return;
   if (typeof buildTradePlan === 'function') {
     const plan = buildTradePlan(c);
@@ -218,10 +243,11 @@ function autoGeneratePlan() {
 }
 
 function savePlan() {
-  const id = planState.coinId;
   const sym = $('planSym').value;
   if (!sym) { alert('Nhập symbol'); return; }
-  const c = id ? ST.coins.find(x=>String(x.id)===String(id)) : null;
+  planState.coinSymbol = sym;
+  const c = resolvePlanCoin({ preferSuggested: true });
+  const id = c?.id || planState.coinId;
   const gateInfo = getPlanGateInfo(c);
   if (gateInfo.blocked) { alert('⛔ PRO EDGE chặn lưu plan: ' + gateInfo.reason); return; }
   if (id) {
@@ -259,5 +285,6 @@ function useProEdgeSuggestion() {
     return;
   }
   planState.coinId = c.id;
+  planState.coinSymbol = c.symbol;
   renderPlan();
 }

@@ -476,7 +476,11 @@ async function runAISmartScanner() {
   if (prog) prog.style.display = 'block';
 
   try {
-    const result = await LIVE_SCANNER.run((message, pct) => {
+    const scanner = window.LIVE_SCANNER;
+    if (!scanner || typeof scanner.run !== 'function') {
+      throw new Error('LIVE_SCANNER unavailable');
+    }
+    const result = await scanner.run((message, pct) => {
       if (txt) txt.textContent = message;
       if (bar) bar.style.width = pct + '%';
     }, {
