@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>System Trader v10.6.9.56 - Moderate Telegram</title>
+  <meta name="description"
+    content="SystemTrader v9.5 Alpha Guard &mdash; One Gate Capital Deployment Engine. Wyckoff/VSA/EMA. Strict Regime & Liquidity Gates." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="style.css?v=10.6.9.56-ModerateTelegram" />
+</head>
+
+<body>
+  <!-- Mobile Header -->
+  <div class="mobile-header">
+    <div class="mobile-toggle" onclick="toggleSidebar()">&#9776;</div>
+    <div class="mobile-brand">&#9889; SYSTEM TRADER</div>
+    <div class="btc-dot" id="btcDotMobile"></div>
+  </div>
+
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon">&#9889;</div>
+      <div class="brand-text">
+        <span class="brand-name">System Trader</span>
+        <span class="brand-sub">v10.6.9.56 &middot; Moderate Telegram</span>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">CORE</div>
+      <a class="nav-item active" data-page="dashboard" href="#dashboard">
+        <span class="nav-icon">&#127968;</span><span>Dashboard</span>
+      </a>
+      <a class="nav-item" data-page="scanner" href="#scanner">
+        <span class="nav-icon">&#128269;</span><span>Coin Scanner</span>
+      </a>
+      <a class="nav-item" data-page="scorer" href="#scorer">
+        <span class="nav-icon">&#127919;</span><span>Coin Scorer</span>
+      </a>
+      <a class="nav-item" data-page="watchlist" href="#watchlist">
+        <span class="nav-icon">&#128065;</span><span>Watchlist</span>
+      </a>
+
+      <div class="nav-section-label">TRADE</div>
+      <a class="nav-item" data-page="models" href="#models">
+        <span class="nav-icon">&#128208;</span><span>Entry Models</span>
+      </a>
+      <a class="nav-item" data-page="plan" href="#plan">
+        <span class="nav-icon">&#128221;</span><span>Trade Plan</span>
+      </a>
+      <a class="nav-item" data-page="risk" href="#risk">
+        <span class="nav-icon">&#128305;</span><span>Risk Calc</span>
+      </a>
+      <a class="nav-item" data-page="checklist" href="#checklist">
+        <span class="nav-icon">&#9989;</span><span>Checklist</span>
+      </a>
+
+      <div class="nav-section-label">PAPER TRADES</div>
+      <a class="nav-item" data-page="positions" href="#positions">
+        <span class="nav-icon">&#128202;</span><span>Positions</span>
+      </a>
+      <a class="nav-item" data-page="journal" href="#journal">
+        <span class="nav-icon">&#128211;</span><span>Journal</span>
+      </a>
+      <a class="nav-item" data-page="signals" href="#signals">
+        <span class="nav-icon">&#129504;</span><span>Trade History</span>
+      </a>
+      <a class="nav-item" data-page="analytics" href="#analytics">
+        <span class="nav-icon">&#128200;</span><span>Analytics</span>
+      </a>
+
+      <div class="nav-section-label">SYSTEM</div>
+      <a class="nav-item" data-page="settings" href="#settings">
+        <span class="nav-icon">&#9881;</span><span>Settings</span>
+      </a>
+      <a class="nav-item" data-page="scan-history" href="#scan-history">
+        <span class="nav-icon">&#128336;</span><span>Scan Logs</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="btc-context-badge" id="btcBadgeSidebar">
+        <span class="btc-dot"></span>
+        <span id="btcBadgeText">BTC: Sideway</span>
+      </div>
+      <div style="font-size:10px;opacity:0.4;margin-top:4px;text-align:center">v10.6.9.56-ModerateTelegram &middot; AUTO_PAPER
+      </div>
+    </div>
+  </aside>
+
+  <!-- Global UI -->
+  <div id="modalOverlay" class="modal-overlay">
+    <div class="modal-box">
+      <div id="modalTitle" class="modal-title">Confirm Action</div>
+      <div id="modalMsg" class="modal-msg">Are you sure you want to proceed?</div>
+      <div class="modal-actions">
+        <button class="btn btn-outline" id="modalCancelBtn">Cancel</button>
+        <button id="modalConfirmBtn" class="btn btn-primary">Confirm Action</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- Main Content -->
+  <main class="main-content" id="mainContent">
+    <div id="page-dashboard" class="page active"></div>
+    <div id="page-scanner" class="page"></div>
+    <div id="page-scorer" class="page"></div>
+    <div id="page-watchlist" class="page"></div>
+    <div id="page-models" class="page"></div>
+    <div id="page-plan" class="page"></div>
+    <div id="page-risk" class="page"></div>
+    <div id="page-checklist" class="page"></div>
+    <div id="page-positions" class="page"></div>
+    <div id="page-journal" class="page"></div>
+    <div id="page-signals" class="page"></div>
+    <div id="page-analytics" class="page"></div>
+    <div id="page-settings" class="page"></div>
+    <div id="page-scan-history" class="page"></div>
+  </main>
+
+  <script src="db.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="strategic-engine.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="state-v51-auth.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="clean-universe.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="coingecko.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="symbol-mapper.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="category-engine.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="analytics-engine.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="feedback-engine.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="risk-engine.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="portfolio-engine.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="binance-market-data.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="native-momentum.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="scanner-universe.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="scanner-analysis.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="scanner-refinement.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="scanner-persistence.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="live-scanner.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="outcome-evaluator.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="learning-engine.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="outcome-linker.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="edge-adapter.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="pro-edge.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="capital-flow.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="capital-engine.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="market-insight.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="regime-engine.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="outcome-engine.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="promotion-engine.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="alpha-guard-core-v51-auth.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="execution-sync.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="telegram.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="alert-engine.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="pages/dashboard.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="pages/scanner.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="pages/scorer.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="pages/models.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="pages/plan.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="pages/risk.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="pages/checklist.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="pages/journal.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="pages/watchlist.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="pages/signals.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="pages/analytics.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="pages/settings.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="pages/scan-history.js?v=10.6.9.56-ModerateTelegram"></script>
+  <script src="app.js?v=10.6.9.56-ModerateTelegram"></script>
+</body>
+
+</html>

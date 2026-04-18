@@ -1,0 +1,1 @@
+v10.6.7.1 execution correction patch\n- soft blocker override for READY on strong edges\n- alert engine uses finalAuthorityStatus/authorityDecision\n- telegram ranks authoritative signals only\n- actionable count uses READY+PLAYABLE+PROBE\n
