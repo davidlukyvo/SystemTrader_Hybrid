@@ -23,6 +23,113 @@ window.OUTCOME_EVAL = (() => {
 
   const _priceCache = new Map();
 
+  function outcomePopulationLabel(population) {
+    return window.ANALYTICS_ENGINE?.POPULATION_LABELS?.[population] || 'Execution-approved candidates';
+  }
+
+  function analyticsScoreFieldLabel() {
+    return 'riskAdjustedScore';
+  }
+
+  function analyticsScoreValue(sig) {
+    if (!sig || typeof sig !== 'object') return 0;
+    const explicit = Number(sig.riskAdjustedScore);
+    if (Number.isFinite(explicit)) return explicit;
+    const breakdown = Number(sig.scoreBreakdown?.riskAdjusted);
+    if (Number.isFinite(breakdown)) return breakdown;
+    return Number(sig.rawScannerScore ?? sig.score ?? 0) || 0;
+  }
+
+  async function buildOutcomeSamples(population = 'execution') {
+    const outcomes = await DB.getOutcomes({});
+    const signals = await DB.getSignals({});
+    const sigMap = new Map(signals.map(s => [s.id, s]));
+    const setupLabel = (sig) => {
+      if (typeof window.getStructuralSetupLabel === 'function') return window.getStructuralSetupLabel(sig);
+      return String(sig?.setup || sig?.structureTag || 'Unknown');
+    };
+    const classify = (sig) => window.ANALYTICS_ENGINE?.getSignalTruth ? window.ANALYTICS_ENGINE.getSignalTruth(sig) : {
+      isTechnicalCandidate: sig?.isTechnicalCandidate === true,
+      isExecutionApproved: sig?.isExecutionApproved === true,
+      isAlertEligible: sig?.isAlertEligible === true,
+      isExecutionRejected: sig?.isExecutionRejected === true,
+      isPortfolioBound: sig?.isPortfolioBound === true,
+    };
+    const useSignal = (sig) => window.ANALYTICS_ENGINE?.shouldUseSignalForPopulation
+      ? window.ANALYTICS_ENGINE.shouldUseSignalForPopulation(sig, population)
+      : sig?.isExecutionApproved === true;
+
+    const samples = [];
+    for (const o of outcomes) {
+      const sig = sigMap.get(o.signalId);
+      if (!sig || !useSignal(sig)) continue;
+      samples.push({
+        outcome: o,
+        signal: sig,
+        setup: setupLabel(sig),
+        truth: classify(sig),
+      });
+    }
+
+    return {
+      population,
+      populationLabel: outcomePopulationLabel(population),
+      samples,
+      outcomes,
+      signals,
+      sigMap,
+    };
+  }
+
+  async function getAnalyticsTruthSummary() {
+    const outcomes = await DB.getOutcomes({});
+    const signals = await DB.getSignals({});
+    const sigMap = new Map(signals.map(s => [s.id, s]));
+    const classify = (sig) => window.ANALYTICS_ENGINE?.getSignalTruth ? window.ANALYTICS_ENGINE.getSignalTruth(sig) : {
+      isTechnicalCandidate: sig?.isTechnicalCandidate === true,
+      isExecutionApproved: sig?.isExecutionApproved === true,
+      isAlertEligible: sig?.isAlertEligible === true,
+      isExecutionRejected: sig?.isExecutionRejected === true,
+      isPortfolioBound: sig?.isPortfolioBound === true,
+    };
+    const summary = {
+      totalSignals: signals.length,
+      totalOutcomes: outcomes.length,
+      technicalSignals: 0,
+      executionSignals: 0,
+      alertSignals: 0,
+      rejectedSignals: 0,
+      portfolioBoundSignals: 0,
+      technicalOutcomes: 0,
+      executionOutcomes: 0,
+      alertOutcomes: 0,
+      rejectedOutcomes: 0,
+      portfolioBoundOutcomes: 0,
+    };
+
+    for (const sig of signals) {
+      const truth = classify(sig);
+      if (truth.isTechnicalCandidate) summary.technicalSignals += 1;
+      if (truth.isExecutionApproved) summary.executionSignals += 1;
+      if (truth.isAlertEligible) summary.alertSignals += 1;
+      if (truth.isExecutionRejected) summary.rejectedSignals += 1;
+      if (truth.isPortfolioBound) summary.portfolioBoundSignals += 1;
+    }
+
+    for (const o of outcomes) {
+      const sig = sigMap.get(o.signalId);
+      if (!sig) continue;
+      const truth = classify(sig);
+      if (truth.isTechnicalCandidate) summary.technicalOutcomes += 1;
+      if (truth.isExecutionApproved && !truth.isPortfolioBound) summary.executionOutcomes += 1;
+      if (truth.isAlertEligible && !truth.isPortfolioBound) summary.alertOutcomes += 1;
+      if (truth.isExecutionRejected && !truth.isPortfolioBound) summary.rejectedOutcomes += 1;
+      if (truth.isPortfolioBound) summary.portfolioBoundOutcomes += 1;
+    }
+
+    return summary;
+  }
+
   async function fetchCurrentPrice(symbol) {
     const pair = symbol.toUpperCase().replace(/USDT$/i, '') + 'USDT';
     const cached = _priceCache.get(pair);
@@ -145,17 +252,13 @@ window.OUTCOME_EVAL = (() => {
 
   /* ── Analytics Aggregation Helpers ────────────────────── */
 
-  async function getSetupPerformance() {
-    const outcomes = await DB.getOutcomes({});
-    const signals = await DB.getSignals({});
-    const sigMap = new Map(signals.map(s => [s.id, s]));
-
+  async function getSetupPerformance(population = 'execution') {
+    const { samples, populationLabel } = await buildOutcomeSamples(population);
     const bySetup = new Map();
-    for (const o of outcomes) {
-      const sig = sigMap.get(o.signalId);
-      const setup = sig ? (sig.setup || 'Unknown') : 'Unknown';
+    for (const sample of samples) {
+      const setup = sample.setup || 'Unknown';
       if (!bySetup.has(setup)) bySetup.set(setup, []);
-      bySetup.get(setup).push(Object.assign({}, o, { signal: sig }));
+      bySetup.get(setup).push(Object.assign({}, sample.outcome, { signal: sample.signal, truth: sample.truth }));
     }
 
     return [...bySetup.entries()].map(function(entry) {
@@ -172,25 +275,24 @@ window.OUTCOME_EVAL = (() => {
         winRate: outcomes.length ? Math.round((winners.length / outcomes.length) * 100) : 0,
         avgPctChange: Number(avgPct.toFixed(2)),
         avgR: Number(avgR.toFixed(3)),
+        population: population,
+        populationLabel: populationLabel,
       };
     }).sort(function(a, b) { return b.winRate - a.winRate || b.avgR - a.avgR; });
   }
 
-  async function getCategoryPerformance() {
-    const outcomes = await DB.getOutcomes({});
-    const signals = await DB.getSignals({});
-    const sigMap = new Map(signals.map(s => [s.id, s]));
-
+  async function getCategoryPerformance(population = 'execution') {
+    const { samples, populationLabel } = await buildOutcomeSamples(population);
     const byCategory = new Map();
-    for (const o of outcomes) {
-      const sig = sigMap.get(o.signalId);
+    for (const sample of samples) {
+      const sig = sample.signal;
       let category = sig ? sig.category : null;
       if (!category && sig?.symbol) {
         category = window.CATEGORY_ENGINE?.getCategory ? window.CATEGORY_ENGINE.getCategory(sig.symbol) : 'OTHER';
       }
       category = category || 'OTHER';
       if (!byCategory.has(category)) byCategory.set(category, []);
-      byCategory.get(category).push(Object.assign({}, o, { signal: sig }));
+      byCategory.get(category).push(Object.assign({}, sample.outcome, { signal: sig, truth: sample.truth }));
     }
 
     return [...byCategory.entries()].map(function(entry) {
@@ -207,18 +309,18 @@ window.OUTCOME_EVAL = (() => {
         winRate: _outcomes.length ? Math.round((winners.length / _outcomes.length) * 100) : 0,
         avgPctChange: Number(avgPct.toFixed(2)),
         avgR: Number(avgR.toFixed(3)),
+        population: population,
+        populationLabel: populationLabel,
       };
     }).sort(function(a, b) { return b.winRate - a.winRate || b.avgR - a.avgR; });
   }
 
-  async function getRegimePerformance() {
-    const outcomes = await DB.getOutcomes({});
-    const signals = await DB.getSignals({});
-    const sigMap = new Map(signals.map(s => [s.id, s]));
-
+  async function getRegimePerformance(population = 'execution') {
+    const { samples, populationLabel } = await buildOutcomeSamples(population);
     const byRegime = new Map();
-    for (const o of outcomes) {
-      const sig = sigMap.get(o.signalId);
+    for (const sample of samples) {
+      const o = sample.outcome;
+      const sig = sample.signal;
       const regime = sig ? (sig.btcContext || 'unknown') : 'unknown';
       if (!byRegime.has(regime)) byRegime.set(regime, []);
       byRegime.get(regime).push(o);
@@ -236,15 +338,14 @@ window.OUTCOME_EVAL = (() => {
         losers: losers.length,
         winRate: outcomes.length ? Math.round((winners.length / outcomes.length) * 100) : 0,
         avgPctChange: Number(avgPct.toFixed(2)),
+        population: population,
+        populationLabel: populationLabel,
       };
     }).sort(function(a, b) { return b.winRate - a.winRate; });
   }
 
-  async function getScoreBucketPerformance() {
-    const outcomes = await DB.getOutcomes({});
-    const signals = await DB.getSignals({});
-    const sigMap = new Map(signals.map(s => [s.id, s]));
-
+  async function getScoreBucketPerformance(population = 'execution') {
+    const { samples, populationLabel } = await buildOutcomeSamples(population);
     const buckets = [
       { label: '80-100', min: 80, max: 100 },
       { label: '60-79', min: 60, max: 79 },
@@ -254,9 +355,9 @@ window.OUTCOME_EVAL = (() => {
     ];
 
     return buckets.map(function(bucket) {
-      var relevant = outcomes.filter(function(o) {
-        var sig = sigMap.get(o.signalId);
-        var score = sig ? (sig.riskAdjustedScore || sig.score || 0) : 0;
+      var relevant = samples.map(function(s) { return Object.assign({}, s.outcome, { signal: s.signal }); }).filter(function(o) {
+        var sig = o.signal;
+        var score = analyticsScoreValue(sig);
         return score >= bucket.min && score <= bucket.max;
       });
       var winners = relevant.filter(function(o) { return o.verdict === 'winner'; });
@@ -269,12 +370,16 @@ window.OUTCOME_EVAL = (() => {
         losers: losers.length,
         winRate: relevant.length ? Math.round((winners.length / relevant.length) * 100) : 0,
         avgPctChange: Number(avgPct.toFixed(2)),
+        population: population,
+        populationLabel: populationLabel,
+        scoreField: analyticsScoreFieldLabel(),
       };
     });
   }
 
-  async function getHoldingPeriodPerformance() {
-    const outcomes = await DB.getOutcomes({});
+  async function getHoldingPeriodPerformance(population = 'execution') {
+    const { samples, populationLabel } = await buildOutcomeSamples(population);
+    const outcomes = samples.map(function(sample) { return sample.outcome; });
 
     return CHECK_DAYS.map(function(day) {
       var dayOutcomes = outcomes.filter(function(o) { return o.checkDay === day; });
@@ -290,6 +395,8 @@ window.OUTCOME_EVAL = (() => {
         winRate: dayOutcomes.length ? Math.round((winners.length / dayOutcomes.length) * 100) : 0,
         avgPctChange: Number(avgPct.toFixed(2)),
         avgR: Number(avgR.toFixed(3)),
+        population: population,
+        populationLabel: populationLabel,
       };
     });
   }
@@ -334,6 +441,9 @@ window.OUTCOME_EVAL = (() => {
     getRegimePerformance: getRegimePerformance,
     getScoreBucketPerformance: getScoreBucketPerformance,
     getHoldingPeriodPerformance: getHoldingPeriodPerformance,
+    getAnalyticsTruthSummary: getAnalyticsTruthSummary,
+    getAnalyticsScoreFieldLabel: analyticsScoreFieldLabel,
+    getAnalyticsScoreValue: analyticsScoreValue,
     triggerSingleEvaluation: triggerSingleEvaluation,
     CHECK_DAYS: CHECK_DAYS,
     MAX_EVALS_PER_SESSION: MAX_EVALS_PER_SESSION,

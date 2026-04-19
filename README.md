@@ -65,7 +65,33 @@ http://localhost:<port>
 - `style.css`: application styling
 - `app.js`: bootstraps the application
 - `pages/`: page-level UI modules
+- `runtime-audit.js`: live scan blocker-distribution summarizer
 - `docs/`: archived notes and handover documents
+
+## Runtime Audit Workflow
+
+The Scanner page now includes a `Runtime Audit Summary` panel to avoid reading long raw traces by hand after each scan.
+
+What it shows:
+
+- blocker group counts (`capital`, `pre-gate`, `gate-quality`)
+- population shape (`conf=0.50`, `rr<1.20`, `score<18`, `setup unclear`, `trigger wait`)
+- top blocker ranking
+- latest execution trace summary
+
+Useful browser helpers:
+
+```javascript
+RUNTIME_AUDIT.summarizeLatest()
+RUNTIME_AUDIT.printLatest()
+window.__LAST_RUNTIME_AUDIT__
+```
+
+Useful panel actions:
+
+- `Copy Short Summary`: preferred for fast handoff / chat review
+- `Copy JSON`: full current runtime audit snapshot
+- `Export JSON`: downloads the same snapshot for archive or sharing
 
 ## Troubleshooting
 

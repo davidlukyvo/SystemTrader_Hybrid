@@ -263,14 +263,115 @@ window.DB = (() => {
     return `sig-${symbol}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
   }
 
+  const ACTIONABLE_DISPLAY_STATUSES = new Set(['READY', 'PLAYABLE', 'PROBE']);
+  const REJECT_LIKE_STATUSES = new Set(['AVOID', 'REJECT', 'REJECTED', 'FETCH_FAIL']);
+  const TRIGGER_LIKE_SETUP_LABELS = new Set([
+    'reclaimbreak',
+    'minispring',
+    'lps15m',
+    'lps4h',
+    'springconfirm',
+    'volumesurge',
+    'absorbtest',
+    'sweepreverse',
+    'breakoutretest15m',
+    'probe_detection',
+    'setup_ready',
+    'scalp_trigger',
+    'trigger_active',
+    'wait',
+  ]);
+
+  function upper(v) {
+    return String(v || '').toUpperCase().trim();
+  }
+
+  function hasMeaningfulTrace(trace) {
+    if (!trace || typeof trace !== 'object') return false;
+    if (Array.isArray(trace)) return trace.length > 0;
+    return Object.keys(trace).length > 0;
+  }
+
+  function isTriggerLikeSetupLabel(value) {
+    const token = upper(value).toLowerCase();
+    return !!token && (
+      TRIGGER_LIKE_SETUP_LABELS.has(token)
+      || /trigger|reclaimbreak|minispring|breakoutretest15m|probe_detection|setup_ready|scalp_trigger/.test(token)
+    );
+  }
+
+  function normalizeStructuralSetupValue(value, fallback = '') {
+    if (typeof window.normalizeStructuralSetupValue === 'function') {
+      return window.normalizeStructuralSetupValue(value, fallback);
+    }
+    const raw = String(value || '').trim();
+    const fallbackRaw = String(fallback || '').trim();
+    if (raw && !isTriggerLikeSetupLabel(raw)) return raw;
+    if (fallbackRaw && !isTriggerLikeSetupLabel(fallbackRaw)) return fallbackRaw;
+    return raw || fallbackRaw || 'Unknown';
+  }
+
+  function deriveLegacyTechnicalStatus(statusRaw, tradeStateRaw, execTierRaw) {
+    if (ACTIONABLE_DISPLAY_STATUSES.has(execTierRaw)) return execTierRaw;
+    if (ACTIONABLE_DISPLAY_STATUSES.has(tradeStateRaw)) return tradeStateRaw;
+    if (['READY', 'EXECUTION', 'ACTIVE', 'READY_STRONG'].includes(statusRaw)) return 'READY';
+    if (['PLAYABLE', 'SCALP_READY'].includes(statusRaw)) return 'PLAYABLE';
+    if (statusRaw === 'PROBE') return 'PROBE';
+    if (statusRaw === 'OBSERVE') return 'WATCH';
+    return 'WATCH';
+  }
+
+  function deriveLegacyDisplayStatus(statusRaw, tradeStateRaw, execTierRaw, technicalStatus) {
+    if (ACTIONABLE_DISPLAY_STATUSES.has(execTierRaw)) return execTierRaw;
+    if (ACTIONABLE_DISPLAY_STATUSES.has(tradeStateRaw)) return tradeStateRaw;
+    if (['READY', 'EXECUTION', 'ACTIVE', 'READY_STRONG'].includes(statusRaw)) return 'READY';
+    if (['PLAYABLE', 'SCALP_READY'].includes(statusRaw)) return 'PLAYABLE';
+    if (statusRaw === 'PROBE') return 'PROBE';
+    if (REJECT_LIKE_STATUSES.has(statusRaw) || REJECT_LIKE_STATUSES.has(tradeStateRaw)) return 'AVOID';
+    return technicalStatus || 'WATCH';
+  }
+
+  function inferAuthorityDecision(displayStatus) {
+    if (displayStatus === 'PROBE') return 'WAIT';
+    if (['READY', 'PLAYABLE'].includes(displayStatus)) return 'ALLOW';
+    return 'REJECT';
+  }
+
+  function deriveExecutionQualityScore(row = {}) {
+    const rawScannerScore = Math.max(0, Math.min(100, Number(row.rawScannerScore ?? row.score ?? 0) || 0));
+    const riskAdjustedScore = Math.max(0, Math.min(100, Number(row.riskAdjustedScore ?? row.scoreBreakdown?.riskAdjusted ?? rawScannerScore) || 0));
+    const executionConfidence = Math.max(0, Math.min(1, Number(row.executionConfidence ?? row.confScore ?? 0) || 0));
+    const rr = Math.max(0, Math.min(5, Number(row.rr ?? 0) || 0));
+    const displayStatus = upper(row.displayStatus || row.finalAuthorityStatus || row.executionTier || row.status);
+    const authorityDecision = upper(row.authorityDecision || row.decision);
+    const trigger = String(row.entrySignal || '').trim().toLowerCase();
+    const entryTiming = String(row.entryTiming || '').trim().toLowerCase();
+    const quality = String(row.chartEntryQuality || '').trim().toLowerCase();
+    const actionable = row.executionGatePassed === true || ['ALLOW', 'WAIT'].includes(authorityDecision);
+
+    let score = (riskAdjustedScore * 0.52) + (executionConfidence * 18) + (rr * 5.5);
+    if (actionable) {
+      if (displayStatus === 'READY') score += 18;
+      else if (displayStatus === 'PLAYABLE') score += 12;
+      else if (displayStatus === 'PROBE') score += 6;
+    } else if (authorityDecision === 'REJECT') {
+      score -= 8;
+    }
+    if (trigger && trigger !== 'wait') score += 4;
+    if (entryTiming && /confirm|retest|break|spring|lps/.test(entryTiming)) score += 2;
+    if (quality === 'entry_good') score += 4;
+    else if (quality === 'entry_late') score -= 6;
+    else if (quality === 'wait_retest') score -= 2;
+    return Math.max(0, Math.min(100, Math.round(score)));
+  }
 
   function getSemanticSignalBucket(signalRecord) {
     const row = normalizeSignalRecord(signalRecord || {});
-    const status = String(row.status || '').toUpperCase();
-    if (status === 'READY') return 'READY';
-    if (status === 'PLAYABLE') return 'PLAYABLE';
-    if (status === 'PROBE') return 'PROBE';
-    if (['AVOID','REJECTED','FETCH_FAIL'].includes(status)) return 'AVOID';
+    const displayStatus = upper(row.displayStatus || row.finalAuthorityStatus || row.status);
+    if (displayStatus === 'READY') return 'READY';
+    if (displayStatus === 'PLAYABLE') return 'PLAYABLE';
+    if (displayStatus === 'PROBE') return 'PROBE';
+    if (['AVOID','REJECTED','FETCH_FAIL'].includes(displayStatus)) return 'AVOID';
     return 'WATCH';
   }
 
@@ -286,8 +387,16 @@ window.DB = (() => {
       || /^no_execution_result$/i.test(reason);
   }
 
+  function isPortfolioBoundSignal(row) {
+    const source = String(row?.authoritySource || row?.source || '').toLowerCase();
+    const reason = String(row?.authorityReason || row?.reason || '').toLowerCase();
+    return source === 'portfolio_binding'
+      || /^position_bound:/i.test(reason)
+      || reason.includes('portfolio_binding');
+  }
+
   function isStrictLearningEligible(signalRecord) {
-    const row = normalizeSignalRecord(signalRecord || {});
+    const row = signalRecord || {};
     const displayStatus = String(row.displayStatus || row.finalAuthorityStatus || row.status || '').toUpperCase();
     const authorityDecision = String(row.authorityDecision || row.decision || '').toUpperCase();
     const executionTier = String(row.executionTier || '').toUpperCase();
@@ -309,27 +418,58 @@ window.DB = (() => {
     return isEligible;
   }
 
-  function getStrictLearningClassification(signalRecord) {
-    const row = normalizeSignalRecord(signalRecord || {});
-    if (!isStrictLearningEligible(row)) return 'reject';
+  function isNearApprovedLearningCandidate(signalRecord) {
+    const row = signalRecord || {};
+    const authorityReason = getAuthorityReasonValue(row);
+    const signalState = upper(row.signalState);
+    const technicalStatus = upper(row.finalAuthorityStatus || row.status);
+    const technicalCandidate = row.isTechnicalCandidate === true
+      || ACTIONABLE_DISPLAY_STATUSES.has(technicalStatus)
+      || signalState === 'CANDIDATE';
+    const externalCapitalBlock = /^capital_guard:/i.test(authorityReason)
+      || /cooldown_active_|loss_streak_guard_|daily_trade_limit_/i.test(authorityReason);
+    return !isPortfolioBoundSignal(row)
+      && row.executionGatePassed !== true
+      && row.executionActionable !== true
+      && upper(row.authorityDecision || row.decision) === 'REJECT'
+      && technicalCandidate
+      && signalState === 'CANDIDATE'
+      && externalCapitalBlock;
+  }
 
-    const displayStatus = String(row.displayStatus || row.finalAuthorityStatus || row.status || '').toUpperCase();
-    if (displayStatus === 'READY') return 'execution';
-    if (displayStatus === 'PLAYABLE') return 'playable';
-    if (displayStatus === 'PROBE') return 'probe';
-    return 'watch';
+  function computeLearningEligibilityProfile(row = {}) {
+    if (row.isPortfolioBound === true || isPortfolioBoundSignal(row)) {
+      return { learningEligible: false, learningPool: 'excluded', learningClassification: 'carry_excluded' };
+    }
+    if (isStrictLearningEligible(row)) {
+      const displayStatus = upper(row.displayStatus || row.finalAuthorityStatus || row.status);
+      const learningClassification = displayStatus === 'READY'
+        ? 'ready'
+        : (displayStatus === 'PROBE' ? 'probe' : 'playable');
+      return { learningEligible: true, learningPool: 'execution', learningClassification };
+    }
+    if (isNearApprovedLearningCandidate(row)) {
+      return { learningEligible: true, learningPool: 'near_approved', learningClassification: 'near_approved' };
+    }
+    return { learningEligible: false, learningPool: 'excluded', learningClassification: 'reject' };
+  }
+
+  function getLearningEligibilityProfile(signalRecord) {
+    return computeLearningEligibilityProfile(signalRecord || {});
+  }
+
+  function getStrictLearningClassification(signalRecord) {
+    return getLearningEligibilityProfile(signalRecord || {}).learningClassification || 'reject';
   }
 
   function buildStrictLearningRepair(signalRecord) {
     const row = normalizeSignalRecord(signalRecord || {});
-    const learningEligible = isStrictLearningEligible(row);
-    const classification = getStrictLearningClassification(row);
+    const profile = computeLearningEligibilityProfile(row);
 
     return {
-      learningEligible,
-      classification,
-      executionActionable: row.executionActionable === true && learningEligible,
-      signalType: learningEligible ? classification : 'reject',
+      learningEligible: profile.learningEligible,
+      learningPool: profile.learningPool,
+      learningClassification: profile.learningClassification,
     };
   }
 
@@ -401,83 +541,118 @@ window.DB = (() => {
 
   function normalizeSignalRecord(signalRecord) {
     const row = Object.assign({}, signalRecord || {});
-    const explicitDisplayStatus = String(row.displayStatus || '').toUpperCase();
-    const explicitFinalAuthorityStatus = String(row.finalAuthorityStatus || '').toUpperCase();
-    const explicitAuthorityDecision = String(row.authorityDecision || row.decision || '').toUpperCase();
-    const explicitAuthorityTrace = row.authorityTrace || null;
-    const displayRaw = String(row.displayStatus || row.finalAuthorityStatus || row.status || '').toUpperCase();
-    const statusRaw = String(row.status || row.displayStatus || row.finalAuthorityStatus || '').toUpperCase();
-    const tradeStateRaw = String(row.tradeState || '').toUpperCase();
-    const execTierRaw = String(row.executionTier || '').toUpperCase();
-    const signalTypeRaw = String(row.signalType || '').toLowerCase();
-    const classRaw = String(row.classification || row.executionClass || '').toLowerCase();
-    const score = Number(row.riskAdjustedScore || row.score || 0);
-    const setup = String(row.setup || row.structureTag || 'Unknown');
-    const gatePassed = row.executionGatePassed === true || row.executionActionable === true;
-    const alreadyNormalized = !!(explicitDisplayStatus && explicitFinalAuthorityStatus && row.hasOwnProperty('authorityDecision'));
+    const explicitDisplayStatus = upper(row.displayStatus);
+    const explicitFinalAuthorityStatus = upper(row.finalAuthorityStatus);
+    const explicitAuthorityDecision = upper(row.authorityDecision || row.decision);
+    const explicitAuthorityTrace = hasMeaningfulTrace(row.authorityTrace) ? row.authorityTrace : (hasMeaningfulTrace(row.authTrace) ? row.authTrace : null);
+    const statusRaw = upper(row.status || row.displayStatus || row.finalAuthorityStatus);
+    const tradeStateRaw = upper(row.tradeState);
+    const execTierRaw = upper(row.executionTier);
+    const rawSetup = String(row.setup || '').trim();
+    const rawStructureTag = String(row.structureTag || '').trim();
+    const normalizedSetup = normalizeStructuralSetupValue(rawSetup, rawStructureTag);
+    const setup = String(normalizedSetup || 'Unknown');
+    const triggerFromSetup = isTriggerLikeSetupLabel(rawSetup) ? rawSetup : '';
+    const authorityReason = String(row.authorityReason || row.reason || '').trim();
+    const explicitGatePassed = row.executionGatePassed === true;
+    const explicitActionable = row.executionActionable === true;
+    const hasExplicitAuthorityContract =
+      !!(explicitDisplayStatus || explicitFinalAuthorityStatus || explicitAuthorityDecision || explicitAuthorityTrace)
+      || row.hasOwnProperty('executionGatePassed')
+      || row.hasOwnProperty('executionActionable');
 
-    // v10.6.9.51: Absolute Contract Support
-    const probeLike = classRaw === 'probe' || signalTypeRaw === 'probe' || ['PROBE', 'PROBE_PENDING'].includes(statusRaw) || ['PROBE', 'PROBE_PENDING'].includes(tradeStateRaw) || ['PROBE', 'PROBE_PENDING'].includes(execTierRaw) || displayRaw === 'PROBE' || explicitFinalAuthorityStatus === 'PROBE';
-    const playableLike = classRaw === 'playable' || signalTypeRaw === 'playable' || statusRaw === 'PLAYABLE' || tradeStateRaw === 'PLAYABLE' || execTierRaw === 'PLAYABLE' || displayRaw === 'PLAYABLE' || explicitFinalAuthorityStatus === 'PLAYABLE';
-    const activeLike = ['execution', 'active'].includes(classRaw) || signalTypeRaw === 'execution' || ['ACTIVE','READY','SCALP_READY','EXECUTION'].includes(statusRaw) || ['ACTIVE','READY','SCALP_READY','EXECUTION'].includes(tradeStateRaw) || ['ACTIVE','READY','SCALP_READY','EXECUTION'].includes(execTierRaw) || ['ACTIVE','READY','SCALP_READY','EXECUTION'].includes(displayRaw) || ['ACTIVE','READY','SCALP_READY','EXECUTION'].includes(explicitFinalAuthorityStatus);
-    const rejectLike = ['AVOID','REJECT','REJECTED','FETCH_FAIL'].includes(statusRaw) || ['AVOID','REJECT','REJECTED'].includes(tradeStateRaw) || ['AVOID','REJECT','REJECTED'].includes(execTierRaw) || ['AVOID','REJECTED'].includes(displayRaw) || ['REJECT', 'REJECTED'].includes(explicitAuthorityDecision);
+    row.setup = normalizedSetup || 'Unknown';
+    row.structureTag = normalizeStructuralSetupValue(row.structureTag, row.setup);
+    const rawScannerScore = Number(row.rawScannerScore ?? row.score ?? row.finalScore ?? 0);
+    const riskAdjustedScore = Number(row.riskAdjustedScore ?? row.scoreBreakdown?.riskAdjusted ?? rawScannerScore);
+    const edgeScore = Number(row.edgeScore ?? row.scoreBreakdown?.edge ?? row.scoreBreakdown?.quant ?? 0);
 
-    if (!row.setup) row.setup = row.structureTag || 'Unknown';
-    if (alreadyNormalized) {
-      row.displayStatus = explicitDisplayStatus;
-      row.finalAuthorityStatus = explicitFinalAuthorityStatus;
-      row.authorityDecision = explicitAuthorityDecision || row.authorityDecision || row.decision || '';
-      row.authorityTrace = explicitAuthorityTrace;
-      row.status = statusRaw || explicitDisplayStatus || explicitFinalAuthorityStatus || 'WATCH';
-      row.executionActionable = row.executionActionable === true || row.executionGatePassed === true || ['READY', 'PLAYABLE', 'PROBE'].includes(explicitDisplayStatus);
-      if (row.executionActionable) row.executionGatePassed = true;
-      row.isExecution = row.isExecution === true || explicitDisplayStatus === 'READY';
-      row.playable = row.playable === true || ['READY', 'PLAYABLE'].includes(explicitDisplayStatus);
-    } else if (/NO SETUP/i.test(setup)) {
-      row.status = 'AVOID';
-      row.executionActionable = false;
-      row.executionGatePassed = false;
-      row.isExecution = false;
-      row.playable = false;
-    } else if (rejectLike) {
-      row.status = 'AVOID';
-      row.executionActionable = false;
-      row.executionGatePassed = false;
-      row.isExecution = false;
-      row.playable = false;
-    } else if (probeLike && (gatePassed || score >= 18)) {
-      row.status = 'PROBE';
-      row.executionActionable = true;
-      row.executionGatePassed = true;
-      row.isExecution = true;
-      row.playable = false;
-    } else if (playableLike && (gatePassed || score >= 20)) {
-      row.status = 'PLAYABLE';
-      row.executionActionable = true;
-      row.executionGatePassed = true;
-      row.isExecution = true;
-      row.playable = true;
-    } else if (activeLike && (gatePassed || score >= 20)) {
-      row.status = 'READY';
-      row.executionActionable = true;
-      row.executionGatePassed = true;
-      row.isExecution = true;
-      row.playable = true;
-    } else {
-      row.status = 'WATCH';
-      row.executionActionable = false;
-      row.isExecution = false;
-      row.playable = false;
+    let technicalStatus = explicitFinalAuthorityStatus || deriveLegacyTechnicalStatus(statusRaw, tradeStateRaw, execTierRaw);
+    let displayStatus = explicitDisplayStatus || deriveLegacyDisplayStatus(statusRaw, tradeStateRaw, execTierRaw, technicalStatus);
+    let authorityDecision = explicitAuthorityDecision || inferAuthorityDecision(displayStatus);
+
+    if (/NO SETUP/i.test(setup)) {
+      technicalStatus = 'WATCH';
+      displayStatus = 'AVOID';
+      authorityDecision = 'REJECT';
     }
-    row.displayStatus = explicitDisplayStatus || String(row.displayStatus || row.status || 'WATCH').toUpperCase();
-    row.finalAuthorityStatus = explicitFinalAuthorityStatus || String(row.finalAuthorityStatus || row.displayStatus || row.status || 'WATCH').toUpperCase();
-    row.authorityDecision = explicitAuthorityDecision || row.authorityDecision || row.decision || (['READY', 'PLAYABLE'].includes(row.displayStatus) ? 'ALLOW' : (row.displayStatus === 'PROBE' ? 'WAIT' : 'REJECT'));
-    row.authorityTrace = explicitAuthorityTrace || row.authorityTrace || null;
-    if (!row.executionTier && row.finalAuthorityStatus) row.executionTier = row.finalAuthorityStatus;
+
+    // Persisted contract must never look execution-approved when final authority rejected it.
+    if (authorityDecision === 'REJECT' && ACTIONABLE_DISPLAY_STATUSES.has(displayStatus)) {
+      displayStatus = 'WATCH';
+    }
+
+    const executionTier = execTierRaw || (ACTIONABLE_DISPLAY_STATUSES.has(technicalStatus) ? technicalStatus : 'OBSERVE');
+    const inferredExecutionApproved = ['ALLOW', 'WAIT'].includes(authorityDecision)
+      && ACTIONABLE_DISPLAY_STATUSES.has(displayStatus)
+      && executionTier !== 'OBSERVE'
+      && !isBlockedLearningReason(authorityReason);
+    const isExecutionApproved = explicitGatePassed || explicitActionable || inferredExecutionApproved;
+    const executionActionable = isExecutionApproved;
+    const executionGatePassed = isExecutionApproved;
+    const isTechnicalCandidate = ACTIONABLE_DISPLAY_STATUSES.has(technicalStatus);
+    const isAlertEligible = isExecutionApproved
+      && executionTier !== 'OBSERVE'
+      && !isBlockedLearningReason(authorityReason);
+    const isExecutionRejected = authorityDecision === 'REJECT' || (!isExecutionApproved && (isTechnicalCandidate || !!authorityReason));
+    const isPortfolioBound = isPortfolioBoundSignal(row);
+
+    row.displayStatus = displayStatus || 'WATCH';
+    row.finalAuthorityStatus = technicalStatus || 'WATCH';
+    row.authorityDecision = authorityDecision || 'REJECT';
+    row.authorityTrace = explicitAuthorityTrace || null;
+    row.executionTier = executionTier;
+    row.executionActionable = executionActionable;
+    row.executionGatePassed = executionGatePassed;
+    row.isTechnicalCandidate = isTechnicalCandidate;
+    row.isExecutionApproved = isExecutionApproved;
+    row.isExecutionRejected = isExecutionRejected;
+    row.isAlertEligible = isAlertEligible;
+    row.isPortfolioBound = isPortfolioBound;
+    row.rawScannerScore = Math.max(0, Math.min(100, Math.round(rawScannerScore || 0)));
+    row.score = row.rawScannerScore;
+    row.finalScore = Number(row.finalScore ?? row.rawScannerScore);
+    row.riskAdjustedScore = Math.max(0, Math.min(100, Math.round(riskAdjustedScore || row.rawScannerScore)));
+    row.edgeScore = Math.max(0, Math.min(100, Math.round(edgeScore || 0)));
+    row.executionQualityScore = Math.max(0, Math.min(100, Math.round(Number(
+      row.executionQualityScore ?? deriveExecutionQualityScore({
+        ...row,
+        displayStatus: row.displayStatus,
+        finalAuthorityStatus: row.finalAuthorityStatus,
+        authorityDecision: row.authorityDecision,
+        executionTier: row.executionTier,
+        executionGatePassed,
+      })
+    ) || 0)));
+    row.rankScore = Number.isFinite(Number(row.rankScore))
+      ? Number(row.rankScore)
+      : (isExecutionApproved ? row.executionQualityScore : row.riskAdjustedScore);
+    row.scoreSemantics = row.scoreSemantics || {
+      scanner: 'rawScannerScore',
+      analytics: 'riskAdjustedScore',
+      ranking: 'rankScore',
+      execution: 'executionQualityScore',
+    };
+    row.authTrace = null;
+    row.status = hasExplicitAuthorityContract ? row.displayStatus : (statusRaw || row.displayStatus || 'WATCH');
+    row.isExecution = row.isExecution === true || row.isExecutionApproved === true || row.displayStatus === 'READY';
+    row.playable = row.playable === true || ['READY', 'PLAYABLE'].includes(row.displayStatus);
     if (row.confScore == null && row.executionConfidence != null) row.confScore = row.executionConfidence;
-    if (!row.entrySignal) row.entrySignal = row.entryTiming || 'wait';
+    if (!row.entrySignal) row.entrySignal = row.entryTiming || triggerFromSetup || 'wait';
+    if (!row.entryTiming) row.entryTiming = row.entrySignal || triggerFromSetup || 'wait';
     row.classification = row.classification || String(row.status || 'WATCH').toLowerCase();
     row.signalType = row.signalType || row.classification;
+    const learningProfile = computeLearningEligibilityProfile({
+      ...row,
+      isTechnicalCandidate: row.isTechnicalCandidate,
+      isExecutionApproved: row.isExecutionApproved,
+      isExecutionRejected: row.isExecutionRejected,
+      isAlertEligible: row.isAlertEligible,
+      isPortfolioBound: row.isPortfolioBound,
+    });
+    row.learningEligible = learningProfile.learningEligible;
+    row.learningPool = learningProfile.learningPool;
+    row.learningClassification = learningProfile.learningClassification;
     if (!Array.isArray(row.outcomesEvaluated)) row.outcomesEvaluated = [];
     return row;
   }
@@ -526,15 +701,13 @@ window.DB = (() => {
     for (const signal of allSignals) {
       const repaired = buildStrictLearningRepair(signal);
       const learningEligible = signal.learningEligible === true;
-      const classification = String(signal.classification || '').toLowerCase();
-      const executionActionable = signal.executionActionable === true;
-      const signalType = String(signal.signalType || '').toLowerCase();
+      const learningPool = String(signal.learningPool || '').toLowerCase();
+      const learningClassification = String(signal.learningClassification || '').toLowerCase();
 
       if (
         learningEligible !== repaired.learningEligible
-        || classification !== repaired.classification
-        || executionActionable !== repaired.executionActionable
-        || signalType !== repaired.signalType
+        || learningPool !== repaired.learningPool
+        || learningClassification !== repaired.learningClassification
       ) {
         dirtySignals.push({
           ...signal,
@@ -980,10 +1153,22 @@ window.DB = (() => {
           displayStatus: s.displayStatus,
           finalAuthorityStatus: s.finalAuthorityStatus,
           authorityDecision: s.authorityDecision,
+          hasAuthorityTrace: hasMeaningfulTrace(s.authorityTrace),
           executionTier: s.executionTier,
           executionGatePassed: s.executionGatePassed,
           executionActionable: s.executionActionable,
+          isTechnicalCandidate: s.isTechnicalCandidate,
+          isExecutionApproved: s.isExecutionApproved,
+          isExecutionRejected: s.isExecutionRejected,
+          isAlertEligible: s.isAlertEligible,
+          isPortfolioBound: s.isPortfolioBound,
+          rawScannerScore: s.rawScannerScore,
+          riskAdjustedScore: s.riskAdjustedScore,
+          executionQualityScore: s.executionQualityScore,
+          rankScore: s.rankScore,
           learningEligible: s.learningEligible,
+          learningPool: s.learningPool,
+          learningClassification: s.learningClassification,
           classification: s.classification,
           authorityReason: s.authorityReason || s.reason || 'None'
         })),
@@ -1052,6 +1237,12 @@ window.DB = (() => {
     getStats,
     migrateFromLocalStorage,
     checkDatabaseIntegrity,
+    normalizeSignalRecord,
+    getSemanticSignalBucket,
+    isStrictLearningEligible,
+    getLearningEligibilityProfile,
+    getStrictLearningClassification,
+    buildStrictLearningRepair,
     // v9 positions
     addPositions,
     getPositions,

@@ -10,16 +10,14 @@ let hybridScanLock = false;
 const NARRATIVES = ['AI', 'DePIN', 'Gaming', 'RWA', 'Infra', 'Cross-chain', 'Privacy', 'Data Layer'];
 
 function getScannerSetupLabel(coin) {
-  const rawSetup = String(coin?.setup || '').trim();
-  const structureTag = String(coin?.structureTag || '').trim();
-  const normalized = rawSetup.toLowerCase();
-  const triggerNames = new Set([
-    'reclaimbreak', 'minispring', 'lps15m', 'lps4h', 'springconfirm',
-    'volumesurge', 'absorbtest', 'sweepreverse', 'trigger_active',
-    'scalp_trigger', 'setup_ready', 'probe_detection'
-  ]);
-  if (!rawSetup || triggerNames.has(normalized)) return structureTag || 'Setup';
-  return rawSetup;
+  if (typeof window.getStructuralSetupLabel === 'function') return window.getStructuralSetupLabel(coin);
+  return String(coin?.setup || coin?.structureTag || 'Setup').trim();
+}
+
+function scannerCanShowTradeLevels(coin) {
+  return typeof window.shouldExposeTradeLevels === 'function'
+    ? window.shouldExposeTradeLevels(coin)
+    : false;
 }
 
 function hasBoundPositionEvidence(coin) {
@@ -106,11 +104,13 @@ function scannerTop3Panel() {
               <div class="text-xs font-mono mt-4 ${(c.rr || 0) >= 1.2 ? 'font-green' : 'font-yellow'}">${(c.rr || 0).toFixed(2)}R</div>
             </div>
           </div>
+          ${scannerCanShowTradeLevels(c) ? `
           <div class="ccc-prices">
             <div class="ccc-price-cell"><div class="ccc-price-label">Entry</div><div class="ccc-price-val entry">${fmtPrice(c.entry)}</div></div>
             <div class="ccc-price-cell"><div class="ccc-price-label">Stop</div><div class="ccc-price-val stop font-red">${fmtPrice(c.stop)}</div></div>
             <div class="ccc-price-cell"><div class="ccc-price-label">TP1</div><div class="ccc-price-val tp1 font-green">${fmtPrice(c.tp1)}</div></div>
-          </div>
+          </div>` : `
+          <div class="text-xs text-muted mt-8" style="padding:8px 10px;background:var(--bg-hover);border-radius:8px">Trade levels hidden until action truth is execution-eligible.</div>`}
           <div class="ccc-tags">
             <span class="badge ${(() => {
               const st = getExecutionDisplayStatus(c);
@@ -221,6 +221,144 @@ function scannerAvoidPanel() {
           </div>
         `).join('')}
       </div>` : '<div class="text-sm text-muted">No high-risk coins detected in recent scans.</div>'}
+  </div>`;
+}
+
+async function copyRuntimeAuditSnapshot() {
+  const summary = window.RUNTIME_AUDIT?.summarizeLatest ? window.RUNTIME_AUDIT.summarizeLatest() : null;
+  if (!summary) {
+    window.showToast?.('No runtime audit snapshot available yet.', 'warning');
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(JSON.stringify(summary, null, 2));
+    window.showToast?.('Runtime audit copied to clipboard.', 'success');
+  } catch (err) {
+    console.error('[RUNTIME AUDIT] Copy failed:', err);
+    window.showToast?.('Failed to copy runtime audit.', 'error');
+  }
+}
+
+async function copyRuntimeAuditShortSummary() {
+  const shortSummary = window.RUNTIME_AUDIT?.toShortSummary ? window.RUNTIME_AUDIT.toShortSummary() : '';
+  if (!shortSummary) {
+    window.showToast?.('No runtime audit short summary available yet.', 'warning');
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(shortSummary);
+    window.showToast?.('Runtime audit short summary copied.', 'success');
+  } catch (err) {
+    console.error('[RUNTIME AUDIT] Short summary copy failed:', err);
+    window.showToast?.('Failed to copy runtime audit short summary.', 'error');
+  }
+}
+
+function exportRuntimeAuditSnapshot() {
+  const summary = window.RUNTIME_AUDIT?.summarizeLatest ? window.RUNTIME_AUDIT.summarizeLatest() : null;
+  if (!summary) {
+    window.showToast?.('No runtime audit snapshot available yet.', 'warning');
+    return;
+  }
+  try {
+    const stamp = new Date(summary.updatedAt || Date.now()).toISOString().replace(/[:.]/g, '-');
+    const blob = new Blob([JSON.stringify(summary, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `runtime-audit-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      URL.revokeObjectURL(a.href);
+      a.remove();
+    }, 0);
+    window.showToast?.('Runtime audit exported.', 'success');
+  } catch (err) {
+    console.error('[RUNTIME AUDIT] Export failed:', err);
+    window.showToast?.('Failed to export runtime audit.', 'error');
+  }
+}
+
+function runtimeAuditPanel() {
+  const summary = window.RUNTIME_AUDIT?.summarizeLatest ? window.RUNTIME_AUDIT.summarizeLatest() : null;
+  if (!summary) return '';
+
+  const counts = summary.counts || {};
+  const metrics = summary.populationMetrics || {};
+  const blockers = Array.isArray(summary.blockerRanking) ? summary.blockerRanking.slice(0, 6) : [];
+  const exec = summary.executionTrace || {};
+  const updatedAt = summary.updatedAt ? new Date(summary.updatedAt).toLocaleTimeString() : 'n/a';
+
+  return `
+  <div class="card mb-20">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <div>
+        <div class="card-title">&#128202; Runtime Audit Summary</div>
+        <div class="text-xs text-muted">Auto-summarized from the latest scan traces so we can spot blocker distribution without reading raw logs.</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <div class="text-xs text-muted">Updated: ${updatedAt}</div>
+        <button class="btn btn-xs btn-outline" onclick="copyRuntimeAuditShortSummary()">Copy Short Summary</button>
+        <button class="btn btn-xs btn-outline" onclick="copyRuntimeAuditSnapshot()">Copy JSON</button>
+        <button class="btn btn-xs btn-outline" onclick="exportRuntimeAuditSnapshot()">Export JSON</button>
+      </div>
+    </div>
+
+    <div class="grid-2 mt-12" style="gap:14px">
+      <div style="background:var(--bg-hover);border:1px solid var(--border);border-radius:10px;padding:12px">
+        <div class="fw-800 text-muted mb-8">Blocker Groups</div>
+        <div class="text-sm" style="display:grid;grid-template-columns:1fr auto;gap:6px 10px">
+          <div>Capital Blocked</div><div class="mono fw-700">${counts.capital_blocked || 0}</div>
+          <div>Pre-Gate Blocked</div><div class="mono fw-700">${counts.pre_gate_blocked || 0}</div>
+          <div>Gate Quality Blocked</div><div class="mono fw-700">${counts.gate_quality_blocked || 0}</div>
+          <div>Other / Missing</div><div class="mono fw-700">${(counts.other_blocked || 0) + (counts.no_blocker_recorded || 0)}</div>
+          <div>Total Signals</div><div class="mono fw-700">${counts.total || 0}</div>
+        </div>
+      </div>
+
+      <div style="background:var(--bg-hover);border:1px solid var(--border);border-radius:10px;padding:12px">
+        <div class="fw-800 text-muted mb-8">Population Shape</div>
+        <div class="text-sm" style="display:grid;grid-template-columns:1fr auto;gap:6px 10px">
+          <div>Conf = 0.50</div><div class="mono fw-700">${metrics.conf_eq_050 || 0}</div>
+          <div>RR &lt; 0.65</div><div class="mono fw-700">${metrics.rr_lt_065 || 0}</div>
+          <div>RR &lt; 0.95</div><div class="mono fw-700">${metrics.rr_lt_095 || 0}</div>
+          <div>RR &lt; 1.20</div><div class="mono fw-700">${metrics.rr_lt_120 || 0}</div>
+          <div>Score &lt; 18</div><div class="mono fw-700">${metrics.score_lt_18 || 0}</div>
+          <div>Setup = unclear</div><div class="mono fw-700">${metrics.setup_unclear || 0}</div>
+          <div>Trigger = wait</div><div class="mono fw-700">${metrics.trigger_wait || 0}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-2 mt-12" style="gap:14px">
+      <div style="background:var(--bg-hover);border:1px solid var(--border);border-radius:10px;padding:12px">
+        <div class="fw-800 text-muted mb-8">Top Blockers</div>
+        ${blockers.length ? blockers.map(item => `
+          <div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-top:1px dashed rgba(255,255,255,0.06)">
+            <div class="text-xs" style="min-width:0;word-break:break-word">${item.reason}</div>
+            <div class="mono fw-700">${item.count}</div>
+          </div>
+        `).join('') : '<div class="text-sm text-muted">No blocker ranking available yet.</div>'}
+      </div>
+
+      <div style="background:var(--bg-hover);border:1px solid var(--border);border-radius:10px;padding:12px">
+        <div class="fw-800 text-muted mb-8">Latest Execution Trace</div>
+        ${exec.symbol ? `
+          <div class="text-sm" style="display:grid;grid-template-columns:1fr auto;gap:6px 10px">
+            <div>Symbol</div><div class="mono fw-700">${exec.symbol}</div>
+            <div>Reason</div><div class="mono fw-700">${exec.reason || 'n/a'}</div>
+            <div>RR</div><div class="mono fw-700">${Number(exec.signal?.rr || 0).toFixed(2)}</div>
+            <div>Score</div><div class="mono fw-700">${Number(exec.signal?.score || 0)}</div>
+            <div>Conf</div><div class="mono fw-700">${Number(exec.signal?.conf || 0).toFixed(2)}</div>
+          </div>
+          ${Array.isArray(exec.primaryRejections) && exec.primaryRejections.length ? `
+            <div class="mt-8">
+              ${exec.primaryRejections.map(item => `<span class="badge badge-gray" style="margin-right:6px;margin-bottom:6px">${item.type}:${item.count}</span>`).join('')}
+            </div>
+          ` : ''}
+        ` : '<div class="text-sm text-muted">No execution trace captured yet.</div>'}
+      </div>
+    </div>
   </div>`;
 }
 
@@ -380,6 +518,7 @@ function renderScanner() {
   ` : ''}
   ${scannerTop3Panel()}
   ${scannerAvoidPanel()}
+  ${runtimeAuditPanel()}
 
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
     <div class="page-title" style="font-size:16px">Universe Intelligence (<span id="coinCount">0</span>)</div>
@@ -417,7 +556,7 @@ function sortCoins(mode) { _sortMode = mode; renderCoinGrid(); }
 
 function renderAuthorityTrace(c) {
   // v10.6.9.52: Absolute Contract + Position-Bound contradiction guard
-  const trace = c.authorityTrace || c.authTrace || null;
+  const trace = c.authorityTrace || null;
   const hasTierTrace = !!(
     trace &&
     (
@@ -626,8 +765,9 @@ function renderCoinGrid() {
           out += `<div class="text-xs font-red mt-4" style="font-size:9px; opacity:0.8; font-style:italic">&#x1F6AB; Blocked: ${reason}</div>`;
         }
         
-        const isEligible = window.LEARNING_ENGINE?.getClassification(c) !== 'reject';
-        out += `<div class="text-xs mt-4" style="font-size:9px; opacity:0.7; color:${isEligible ? 'var(--green)' : 'var(--red)'}">Learning Eligible: ${isEligible ? 'Yes' : 'No'}</div>`;
+        const learningPool = String(c.learningPool || 'excluded');
+        const isEligible = learningPool !== 'excluded' && window.LEARNING_ENGINE?.getClassification(c) !== 'reject';
+        out += `<div class="text-xs mt-4" style="font-size:9px; opacity:0.7; color:${isEligible ? 'var(--green)' : 'var(--red)'}">Learning Eligible: ${isEligible ? 'Yes' : 'No'}${isEligible ? ` (${learningPool})` : ''}</div>`;
         
         return out ? `<div style="margin-top:8px; margin-bottom:8px; border-top:1px dashed var(--border); padding-top:4px">${out}</div>` : '';
       })()}
@@ -729,8 +869,8 @@ async function runAISmartScanner(meta = {}) {
           regimeType: ST.scanMeta?.regime?.type || 'CHOP',
           sessionStats: {
             scanned: Number(result?.scanMeta?.insight?.analyzedCount || result?.coins?.length || 0),
-            blocked: Number((result?.coins || []).filter(x => x?.rejected || ['AVOID', 'FETCH_FAIL', 'WATCH'].includes(String(x?.status || '').toUpperCase())).length),
-            active: Number((result?.coins || []).filter(x => ['READY', 'PLAYABLE', 'PROBE'].includes(String(x?.status || '').toUpperCase())).length)
+            blocked: Number((result?.coins || []).filter(x => ['AVOID', 'FETCH_FAIL', 'WATCH'].includes(getExecutionDisplayStatus(x))).length),
+            active: Number((result?.coins || []).filter(x => ['READY', 'PLAYABLE', 'PROBE'].includes(getExecutionDisplayStatus(x))).length)
           }
         };
         try {
@@ -738,6 +878,13 @@ async function runAISmartScanner(meta = {}) {
           console.log('[ALERT TRACE] meta', alertMeta);
           const alertResult = await window.AlertEngine.processSignals(signalRows, alertMeta);
           window.__LAST_ALERT_TRACE__ = { at: Date.now(), meta: alertMeta, signals: signalRows, result: alertResult };
+          if (window.RUNTIME_AUDIT?.printLatest) {
+            window.RUNTIME_AUDIT.printLatest({
+              alertTraceEngine: window.__LAST_ALERT_TRACE_ENGINE__,
+              alertTrace: window.__LAST_ALERT_TRACE__,
+              executionTrace: window.__LAST_EXECUTION_TRACE__,
+            });
+          }
           console.log('[ALERT TRACE] result', alertResult);
           console.groupEnd?.();
         } catch (alertErr) {

@@ -593,6 +593,112 @@ function scoreBreakdownRows(bd = {}) {
   }).join('');
 }
 
+const CANONICAL_STRUCTURAL_SETUPS = Object.freeze([
+  'accumulation',
+  'phase-candidate',
+  'early-phase-d',
+  'breakout',
+  'trend-continuation',
+  'unclear',
+  'early-watch',
+]);
+
+const STRUCTURAL_SETUP_ALIAS_MAP = Object.freeze({
+  'phase c candidate': 'phase-candidate',
+  'phase-candidate': 'phase-candidate',
+  'phase c': 'phase-candidate',
+  'early phase d': 'early-phase-d',
+  'early-phase-d': 'early-phase-d',
+  'trend continuation': 'trend-continuation',
+  'trend-continuation': 'trend-continuation',
+  'early watch': 'early-watch',
+  'early-watch': 'early-watch',
+  'breakout retest': 'breakout',
+  'breakout_retest': 'breakout',
+  're-accumulation': 'accumulation',
+});
+
+const STRUCTURAL_SETUP_VOCAB = new Set(CANONICAL_STRUCTURAL_SETUPS);
+
+const TRIGGER_LIKE_SETUP_LABELS = new Set([
+  'reclaimbreak',
+  'minispring',
+  'lps15m',
+  'lps4h',
+  'springconfirm',
+  'volumesurge',
+  'absorbtest',
+  'sweepreverse',
+  'breakoutretest15m',
+  'probe_detection',
+  'setup_ready',
+  'scalp_trigger',
+  'trigger_active',
+  'wait',
+]);
+
+function normalizeSetupToken(value) {
+  return String(value || '').trim().toLowerCase().replace(/_/g, '-');
+}
+
+function toCanonicalStructuralSetupToken(value) {
+  const token = normalizeSetupToken(value);
+  if (!token) return '';
+  if (STRUCTURAL_SETUP_VOCAB.has(token)) return token;
+  return STRUCTURAL_SETUP_ALIAS_MAP[token] || token;
+}
+
+function isTriggerLikeSetupLabel(value) {
+  const token = normalizeSetupToken(value);
+  return !!token && (
+    TRIGGER_LIKE_SETUP_LABELS.has(token)
+    || /trigger|reclaimbreak|minispring|breakoutretest15m|probe_detection|setup_ready|scalp_trigger/.test(token)
+  );
+}
+
+function normalizeStructuralSetupValue(value, fallback = '') {
+  const raw = String(value || '').trim();
+  const fallbackRaw = String(fallback || '').trim();
+  const token = toCanonicalStructuralSetupToken(raw);
+  const fallbackToken = toCanonicalStructuralSetupToken(fallbackRaw);
+
+  if (STRUCTURAL_SETUP_VOCAB.has(token)) return token;
+  if (STRUCTURAL_SETUP_VOCAB.has(fallbackToken)) return fallbackToken;
+  if (token && !isTriggerLikeSetupLabel(token)) return token;
+  if (fallbackToken && !isTriggerLikeSetupLabel(fallbackToken)) return fallbackToken;
+  return 'Unknown';
+}
+
+function getCanonicalStructuralSetups() {
+  return [...CANONICAL_STRUCTURAL_SETUPS];
+}
+
+function isCanonicalStructuralSetup(value) {
+  return STRUCTURAL_SETUP_VOCAB.has(toCanonicalStructuralSetupToken(value));
+}
+
+function getStructuralSetupLabel(coinOrSetup, maybeFallback = '') {
+  if (coinOrSetup && typeof coinOrSetup === 'object') {
+    return normalizeStructuralSetupValue(coinOrSetup.setup, coinOrSetup.structureTag);
+  }
+  return normalizeStructuralSetupValue(coinOrSetup, maybeFallback);
+}
+
+function getEntryTriggerLabel(coin) {
+  if (!coin || typeof coin !== 'object') return 'wait';
+  return String(
+    coin.entrySignal ||
+    coin.entryTiming ||
+    (isTriggerLikeSetupLabel(coin.setup) ? coin.setup : '') ||
+    'wait'
+  ).trim();
+}
+
+window.SETUP_TAXONOMY = Object.freeze({
+  canonicalStructuralSetups: getCanonicalStructuralSetups(),
+  triggerLikeSetupLabels: [...TRIGGER_LIKE_SETUP_LABELS],
+});
+
 function isExecutionUnlockReadyState(coin) {
   if (!coin || typeof coin !== 'object') return false;
   if (coin.rejected || coin.status === 'AVOID') return false;
@@ -601,7 +707,7 @@ function isExecutionUnlockReadyState(coin) {
   const conf = Number(coin?.executionConfidence || 0);
   const quality = String(coin?.chartEntryQuality || '').toLowerCase();
   const timing = String(coin?.entryTiming || coin?.signalEntryTiming || '').toLowerCase();
-  const setup = String(coin?.setup || coin?.structureTag || '').toLowerCase();
+  const setup = String(getStructuralSetupLabel(coin) || '').toLowerCase();
   const fakePump = String(coin?.fakePumpRisk || '').toLowerCase();
   const baseStatus = String(coin?.status || coin?.proposedStatus || '').toUpperCase();
   const setupOk = /phase|breakout|trend|spring|retest|reclaim|continuation|accumulation/.test(setup);
@@ -624,8 +730,8 @@ function getExecutionDisplayStatus(coin) {
   const authDecision = String(coin.authorityDecision || coin.decision || '').toUpperCase();
   const authTier = String(coin.finalAuthorityStatus || '').toUpperCase().trim();
   
-  // v10.6.9.54: Absolute Parity — If the engine REJECTED the signal, it is WATCH/HOLD, not its technical tier.
-  if (authDecision.includes('REJECT')) return 'WATCH';
+  // v10.6.9.56 Task 5: REJECT must resolve into a clean blocked action truth.
+  if (authDecision.includes('REJECT')) return deriveBlockedActionStatus(coin);
 
   if (authTier && !['UNDEFINED', 'NULL', 'UNKNOWN', ''].includes(authTier)) return authTier;
 
@@ -642,13 +748,94 @@ function getExecutionDisplayStatus(coin) {
   return 'WATCH';
 }
 
+function deriveBlockedActionStatus(coin) {
+  const source = String(coin?.authoritySource || '').toLowerCase();
+  const reason = String(coin?.authorityReason || coin?.reason || '').toLowerCase();
+  const blockers = Array.isArray(coin?.authorityBlockers) ? coin.authorityBlockers.join(' ').toLowerCase() : '';
+  const search = `${source} ${reason} ${blockers}`.trim();
+  if (!search) return 'WATCH';
+
+  if (
+    search.includes('portfolio_binding') ||
+    search.includes('position_bound:') ||
+    search.includes('dedup:') ||
+    search.includes('cooldown_active_') ||
+    search.includes('daily_trade_limit_') ||
+    search.includes('pre_gate_blocked:watch') ||
+    search.includes('all_tiers_rejected') ||
+    search.includes('probe') ||
+    search.includes('watch')
+  ) return 'WATCH';
+
+  if (
+    search.includes('fake_pump') ||
+    search.includes('invalid_stop') ||
+    search.includes('structure_risk') ||
+    search.includes('gate') ||
+    search.includes('risk') ||
+    search.includes('capital_guard') ||
+    search.includes('sizing') ||
+    search.includes('bubble')
+  ) return 'AVOID';
+
+  return 'WATCH';
+}
+
+function summarizeActionReason(coin) {
+  const reason = String(coin?.authorityReason || coin?.reason || '').trim();
+  const blockers = Array.isArray(coin?.authorityBlockers) ? coin.authorityBlockers : [];
+  const primary = String(blockers[0] || reason || '').trim();
+  const search = primary.toLowerCase();
+  if (!primary) return 'No clear authority reason';
+  if (/^dedup:/.test(search) || search.includes('portfolio_binding') || search.includes('position_bound:')) return 'Already tracked in portfolio';
+  if (search.includes('cooldown_active_')) return 'Cooldown still active';
+  if (search.includes('daily_trade_limit_')) return 'Daily trade limit reached';
+  if (search.includes('capital_guard')) return 'Blocked by capital guard';
+  if (search.includes('pre_gate_blocked:watch')) return 'Interesting, but not cleared for action yet';
+  if (search.includes('all_tiers_rejected')) return 'Failed execution-grade thresholds';
+  if (search.includes('fake_pump')) return 'Fake-pump risk too high';
+  if (search.includes('invalid_stop')) return 'Invalid stop distance';
+  return primary.replace(/^pre_gate_blocked:/i, '').replace(/^capital_guard:/i, '').replace(/^dedup:/i, '');
+}
+
+function isMaintainedSignalState(coin) {
+  const source = String(coin?.authoritySource || '').toLowerCase();
+  const reason = String(coin?.authorityReason || coin?.reason || '').toLowerCase();
+  const state = String(coin?.positionState || '').toUpperCase();
+  return source === 'portfolio_binding'
+    || reason.startsWith('position_bound:')
+    || reason.startsWith('dedup:')
+    || ['ARMED', 'PENDING', 'ACTIVE', 'PARTIAL_EXIT'].includes(state);
+}
+
+function shouldExposeTradeLevels(coin, opts = {}) {
+  if (!coin || typeof coin !== 'object') return false;
+  const status = getExecutionDisplayStatus(coin);
+  const decision = String(coin.authorityDecision || coin.decision || '').toUpperCase();
+  const actionable = coin.executionActionable === true || coin.executionGatePassed === true;
+  const conf = Number(coin.executionConfidence || coin.confScore || 0);
+  const rr = Number(coin.rr || 0);
+  const minConf = Number(opts.minConf ?? (status === 'READY' ? 0.80 : 0.58));
+  const minRR = Number(opts.minRR ?? (status === 'READY' ? 2.0 : 1.4));
+  const entry = Number(coin.entry || coin.price || 0);
+  const stop = Number(coin.stop || 0);
+  const tp1 = Number(coin.tp1 || 0);
+  if (!['READY', 'PLAYABLE'].includes(status)) return false;
+  if (decision === 'REJECT') return false;
+  if (!actionable) return false;
+  if (isMaintainedSignalState(coin)) return false;
+  if (!(conf >= minConf && rr >= minRR)) return false;
+  if (!(entry > 0 && stop > 0 && stop < entry && tp1 > 0)) return false;
+  return true;
+}
+
 function isActionableStatus(status) {
   return ['READY', 'PLAYABLE', 'PROBE'].includes(String(status || '').toUpperCase());
 }
 
 function isTradableCoin(coin) {
   if (!coin || typeof coin !== 'object') return false;
-  const setup = String(coin.setup || coin.structureTag || '').toLowerCase();
+  const setup = String(getStructuralSetupLabel(coin) || '').toLowerCase();
   if (!setup || setup.includes('no setup')) return false;
   const displayStatus = getExecutionDisplayStatus(coin);
   if (!isActionableStatus(displayStatus)) return false;
@@ -679,7 +866,7 @@ function syncWatchlistFromCoins() {
       const displayStatus = getExecutionDisplayStatus(c);
       const note = c.rejected
         ? ((c.rejectReasons && c.rejectReasons[0]) || (c.warnings && c.warnings[0]) || 'Rejected by system')
-        : `${displayStatus || c.status || gradeInfo(c.score || 0).grade} \u00B7 ${(c.setup || c.structureTag || 'No setup')} \u00B7 Entry ${(c.scoreBreakdown?.entry || 0)}/8`;
+        : `${displayStatus || c.status || gradeInfo(c.score || 0).grade} \u00B7 ${getStructuralSetupLabel(c)} \u00B7 Entry ${(c.scoreBreakdown?.entry || 0)}/8`;
       next[tier].push({ symbol: c.symbol, note, addedAt: Date.now() });
     });
   ST.watchlist = next;
@@ -728,7 +915,8 @@ function quantBand(v) {
 }
 
 function normalizeSetupName(name) {
-  const s = String(name || '').trim().toLowerCase();
+  const structural = getStructuralSetupLabel(name);
+  const s = String(structural || name || '').trim().toLowerCase();
   if (!s) return 'unknown';
   if (s.includes('spring') && s.includes('test')) return 'spring + test';
   if (s.includes('spring')) return 'spring';

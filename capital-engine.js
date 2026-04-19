@@ -184,6 +184,25 @@ window.CAPITAL_ENGINE = (() => {
       }
     }
 
+    const moderateSidewayChopProbeLossStreakRelax = (
+      regime === 'sideway' &&
+      String(regimeType || '').toUpperCase() === 'CHOP' &&
+      tierKey === 'PROBE' &&
+      openPositions.length === 0 &&
+      stats.consecutiveLosses === 2 &&
+      n(signal.rr, 0) >= 1.0 &&
+      n(signal.executionConfidence, 0) >= 0.50 &&
+      n(signal.score, 0) >= 16 &&
+      String(signal.fakePumpRisk || '').toLowerCase() !== 'high'
+    );
+    if (moderateSidewayChopProbeLossStreakRelax) {
+      for (let i = guardReasons.length - 1; i >= 0; i--) {
+        if (String(guardReasons[i] || '') === 'loss_streak_guard_2') {
+          guardReasons.splice(i, 1);
+        }
+      }
+    }
+
     return {
       version: VERSION,
       regime,
@@ -207,6 +226,7 @@ window.CAPITAL_ENGINE = (() => {
       hardExposureCapPct: Number(profile.hardExposureCapPct.toFixed(4)),
       moderateBullChopCooldownRelax,
       moderateSidewayChopGuardRelax,
+      moderateSidewayChopProbeLossStreakRelax,
       allowed: guardReasons.length === 0,
       guardReasons,
     };

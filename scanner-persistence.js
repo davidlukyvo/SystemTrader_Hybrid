@@ -18,9 +18,15 @@ window.SCANNER_PERSISTENCE = (() => {
 
   function buildScanCache(results = [], deployableTop3 = [], priorCache = {}, sessionContext = {}) {
     const rows = Array.isArray(results) ? results : [];
-    const ready = rows.filter(c => String(c?.status || '').toUpperCase() === 'READY').length;
-    const playable = rows.filter(c => String(c?.status || '').toUpperCase() === 'PLAYABLE').length;
-    const probe = rows.filter(c => String(c?.status || '').toUpperCase() === 'PROBE').length;
+    const displayStatusOf = (coin) => String(
+      coin?.displayStatus ||
+      coin?.finalAuthorityStatus ||
+      coin?.status ||
+      'WATCH'
+    ).toUpperCase();
+    const ready = rows.filter(c => displayStatusOf(c) === 'READY').length;
+    const playable = rows.filter(c => displayStatusOf(c) === 'PLAYABLE').length;
+    const probe = rows.filter(c => displayStatusOf(c) === 'PROBE').length;
     const actionable = ready + playable + probe;
     const finalizedAt = Number(sessionContext?.finalizedAt || Date.now());
 

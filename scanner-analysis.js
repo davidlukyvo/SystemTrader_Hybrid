@@ -223,7 +223,7 @@ window.SCANNER_ANALYSIS = (() => {
 
   function inferInstitutionalEntrySignal(m15) {
     const last = m15[m15.length - 1]; const prev = m15[m15.length - 2]; const prev2 = m15[m15.length - 3];
-    if (!last || !prev || !prev2) return { label:'wait', trigger15mValid:false, fullTriggerValid:false };
+    if (!last || !prev || !prev2) return { label:'wait', triggerLabel:'wait', timingLabel:'wait', trigger15mValid:false, fullTriggerValid:false };
     const avgVol20 = avg(m15.slice(-20).map(x => x.volume));
     const volOK = avgVol20 > 0 && last.volume >= avgVol20 * 1.1;
     const reclaimBreak = last.close > prev.high && volOK;
@@ -237,7 +237,18 @@ window.SCANNER_ANALYSIS = (() => {
     else if (breakoutRetest15m) label = 'breakoutRetest15m';
     else if (lps15m) label = 'lps15m';
     else if (miniSpring) label = 'miniSpring';
-    return { label, trigger15mValid, fullTriggerValid, reclaimBreak, miniSpring, breakoutRetest15m, lps15m, volOK };
+    return {
+      label,
+      triggerLabel: label,
+      timingLabel: label,
+      trigger15mValid,
+      fullTriggerValid,
+      reclaimBreak,
+      miniSpring,
+      breakoutRetest15m,
+      lps15m,
+      volOK
+    };
   }
 
   function computeSignalFeatures(coin, klines, btcContext, inject = {}) {
@@ -305,20 +316,30 @@ window.SCANNER_ANALYSIS = (() => {
     if (features.structure.label === 'unclear') finalStatus = 'near_miss';
     
     const quantMeta = Refinement.quantOverlay(coin, score, levels.rr, btcContext, features.structure.label);
+    const rawScannerScore = score;
+    const riskAdjustedScore = Number(quantMeta.riskAdjustedScore || rawScannerScore);
+    const edgeScore = Number(quantMeta.edgeScore || 0);
     
+    const structuralSetup = typeof window.normalizeStructuralSetupValue === 'function'
+      ? window.normalizeStructuralSetupValue(features.structure.label, 'unclear')
+      : features.structure.label;
+
     return {
       id: `${coin.base}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
       symbol: coin.base, name: coin.name || coin.base, price: coin.lastPrice, volume24h: Number(coin.volume24h ?? 0),
       entry: levels.entry, stop: levels.stop, tp1: levels.tp1, tp2: levels.tp2, tp3: levels.tp3,
       momentumScore: features.momentumScore || 0, momentumPhase: features.momentumPhase || 'NONE', momentumDetected: !!features.momentumDetected,
-      rr: levels.rrInfo.rr, rrInfo: levels.rrInfo, status: finalStatus, proposedStatus, score, finalScore: score,
-      setup: features.structure.label, structureTag: features.structure.label, relVol: features.structure.relVol15, vsaTag: features.vsa.label,
+      rr: levels.rrInfo.rr, rrInfo: levels.rrInfo, status: finalStatus, proposedStatus,
+      score: rawScannerScore, finalScore: rawScannerScore, rawScannerScore, riskAdjustedScore, edgeScore,
+      executionQualityScore: riskAdjustedScore, rankScore: riskAdjustedScore,
+      setup: structuralSetup, structureTag: structuralSetup, relVol: features.structure.relVol15, vsaTag: features.vsa.label,
       fib: features.fib.zone, fakePumpRisk: features.fake.label, executionTier: String(finalStatus).toUpperCase(), smartMoneyScore, executionConfidence: Number(scalpConfidenceBase.toFixed(2)),
       rejected: finalStatus === 'reject' || finalStatus === 'AVOID', rejectReasons: hardRejectReasons, warnings: softWarnings,
       entrySignal: features.entrySignalMeta.triggerLabel || features.entrySignalMeta.label,
       entryTiming: features.entrySignalMeta.timingLabel || features.entrySignalMeta.label,
       chartEntryQuality: levels.chartAware.entryQuality, category: Category?.getCategory ? Category.getCategory(coin.base) : 'OTHER',
-      scoreBreakdown: { structure: features.structure.score, volume: features.ema15m.score, fib: features.fib.score, ema: features.ema4h.score, resistance: levels.chartAware.bonus, btc: btcContext === 'bear' ? 1 : 5, cleanliness, entry: features.entryScore, quant: quantMeta.edgeScore, riskAdjusted: quantMeta.riskAdjustedScore, edge: quantMeta.edgeScore }
+      scoreBreakdown: { structure: features.structure.score, volume: features.ema15m.score, fib: features.fib.score, ema: features.ema4h.score, resistance: levels.chartAware.bonus, btc: btcContext === 'bear' ? 1 : 5, cleanliness, entry: features.entryScore, quant: quantMeta.edgeScore, riskAdjusted: quantMeta.riskAdjustedScore, edge: quantMeta.edgeScore },
+      scoreSemantics: { scanner: 'rawScannerScore', analytics: 'riskAdjustedScore', ranking: 'rankScore', execution: 'executionQualityScore' }
     };
   }
 

@@ -11,6 +11,22 @@ window.LIVE_SCANNER = (() => {
   function avg(arr) { return arr.length ? arr.reduce((a,b)=>a+b,0) / arr.length : 0; }
   function safeNum(v, d=0) { const n = Number(v); return Number.isFinite(n) ? n : d; }
   function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+  function sanitizeSetupTaxonomy(coin) {
+    if (!coin || typeof coin !== 'object') return coin;
+    const structureLabel = typeof window.getStructuralSetupLabel === 'function'
+      ? window.getStructuralSetupLabel(coin)
+      : String(coin.setup || coin.structureTag || 'Unknown');
+    const triggerLabel = typeof window.getEntryTriggerLabel === 'function'
+      ? window.getEntryTriggerLabel(coin)
+      : String(coin.entrySignal || coin.entryTiming || 'wait');
+    return {
+      ...coin,
+      setup: structureLabel || 'Unknown',
+      structureTag: structureLabel || coin.structureTag || 'Unknown',
+      entrySignal: triggerLabel || 'wait',
+      entryTiming: String(coin.entryTiming || triggerLabel || 'wait')
+    };
+  }
 
   /**
    * Main Scan Orchestration Loop
@@ -59,9 +75,10 @@ window.LIVE_SCANNER = (() => {
       if (window.EXECUTION_ENGINE_V9?.run) {
         progressCb?.('Đang đồng bộ Authority Engine...', 90);
         const authorityPriceMap = {};
-        sorted.forEach(c => { if (c.symbol && c.price > 0) authorityPriceMap[c.symbol.toUpperCase()] = c.price; });
-        const authorityRun = await window.EXECUTION_ENGINE_V9.run(sorted, btcContext, 0, authorityPriceMap);
-        authorityCoins = window.SCANNER_REFINEMENT.mergeAuthorityCoins(sorted, authorityRun);
+        const authorityInput = (Array.isArray(sorted) ? sorted : []).map(sanitizeSetupTaxonomy);
+        authorityInput.forEach(c => { if (c.symbol && c.price > 0) authorityPriceMap[c.symbol.toUpperCase()] = c.price; });
+        const authorityRun = await window.EXECUTION_ENGINE_V9.run(authorityInput, btcContext, 0, authorityPriceMap);
+        authorityCoins = window.SCANNER_REFINEMENT.mergeAuthorityCoins(authorityInput, authorityRun);
       }
       mark('authority_run');
 

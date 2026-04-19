@@ -27,7 +27,11 @@ async function renderSignals() {
     // Fallback for direct record access
     return String(row?.displayStatus || row?.finalAuthorityStatus || row?.status || 'WATCH').toUpperCase();
   };
-  const cleanSignals = (Array.isArray(signalsRaw) ? [...signalsRaw] : []).filter(s => !/no setup/i.test(String(s?.setup || '')));
+  const setupLabel = (row) => {
+    if (typeof window.getStructuralSetupLabel === 'function') return window.getStructuralSetupLabel(row);
+    return String(row?.setup || row?.structureTag || 'unknown');
+  };
+  const cleanSignals = (Array.isArray(signalsRaw) ? [...signalsRaw] : []).filter(s => !/no setup/i.test(String(setupLabel(s) || '')));
   const sortedSignals = cleanSignals.sort((a, b) => {
     const aExec = ['READY','PLAYABLE','PROBE'].includes(displayStatus(a)) ? 1 : 0;
     const bExec = ['READY','PLAYABLE','PROBE'].includes(displayStatus(b)) ? 1 : 0;
@@ -65,7 +69,7 @@ async function renderSignals() {
   const latestScanCounts = latestScan ? (scanCounts.get(latestScan.id) || { actionable: Number(latestScan.executionBreakdown?.actionable ?? ((Number(latestScan.executionBreakdown?.ready || 0) + Number(latestScan.executionBreakdown?.playable || 0)))), ready: Number(latestScan.executionBreakdown?.ready ?? latestScan.executionBreakdown?.execution ?? latestScan.executionQualifiedCount ?? latestScan.qualifiedCount ?? 0), execution: Number(latestScan.executionBreakdown?.execution ?? latestScan.executionBreakdown?.ready ?? latestScan.executionQualifiedCount ?? latestScan.qualifiedCount ?? 0), playable: Number(latestScan.executionBreakdown?.playable || 0), probe: Number(latestScan.executionBreakdown?.probe || 0), rejected: Number(latestScan.rejectedCount || 0) }) : null;
   const setupCounts = {};
   for (const s of (signals || [])) {
-    const setup = String(s.setup || 'unknown');
+    const setup = String(setupLabel(s) || 'unknown');
     if (/no setup/i.test(setup)) continue;
     setupCounts[setup] = (setupCounts[setup] || 0) + 1;
   }
@@ -156,6 +160,12 @@ function renderSignalRow(sig, outcomeMap) {
   const outcomes = ['D1','D3','D7','D14','D30'].map(h => outcomeMap.get(`${sig.id}__${h}`)).filter(Boolean);
   const displayStatus = displaySignalStatus(sig);
   const statusCls = ['REJECTED','AVOID'].includes(displayStatus) ? 'badge-red' : displayStatus === 'READY' ? 'badge-green' : displayStatus === 'PLAYABLE' ? 'badge-cyan' : displayStatus === 'PROBE' ? 'badge-yellow' : 'badge-gray';
+  const setupLabel = typeof window.getStructuralSetupLabel === 'function'
+    ? window.getStructuralSetupLabel(sig)
+    : String(sig.setup || sig.structureTag || 'unknown');
+  const triggerLabel = typeof window.getEntryTriggerLabel === 'function'
+    ? window.getEntryTriggerLabel(sig)
+    : String(sig.entrySignal || sig.entryTiming || 'wait');
   return `
     <div style="padding:12px;border-radius:10px;background:var(--bg-hover);border:1px solid var(--border)">
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap">
@@ -163,11 +173,11 @@ function renderSignalRow(sig, outcomeMap) {
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             <span class="font-mono fw-700">${escapeHtml(sig.symbol || 'UNKNOWN')}</span>
             <span class="badge ${statusCls}">${escapeHtml(displayStatus)}</span>
-            <span class="badge badge-gray">${escapeHtml(sig.setup || 'unknown')}</span>
+            <span class="badge badge-gray">${escapeHtml(setupLabel || 'unknown')}</span>
             <span class="badge badge-cyan">score ${Math.round(Number(sig.score || 0))}</span>
             <span class="badge badge-gray">${escapeHtml(sig.btcContext || 'unknown')}</span>
           </div>
-          <div class="text-xs text-muted" style="margin-top:6px">${formatTimestamp(sig.timestamp)} · entry ${fmtNullablePrice(sig.entry)} · stop ${fmtNullablePrice(sig.stop)} · tp1 ${fmtNullablePrice(sig.tp1)} · tp2 ${fmtNullablePrice(sig.tp2)}</div>
+          <div class="text-xs text-muted" style="margin-top:6px">${formatTimestamp(sig.timestamp)} · trigger ${escapeHtml(triggerLabel)} · entry ${fmtNullablePrice(sig.entry)} · stop ${fmtNullablePrice(sig.stop)} · tp1 ${fmtNullablePrice(sig.tp1)} · tp2 ${fmtNullablePrice(sig.tp2)}</div>
           <div class="text-xs text-muted" style="margin-top:6px">riskAdj ${Math.round(Number(sig.riskAdjustedScore || 0))} · edge ${Math.round(Number(sig.edgeScore || 0))} · RR ${Number(sig.rr || 0).toFixed(2)}x</div>
         </div>
         <div style="min-width:240px;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;align-items:center">

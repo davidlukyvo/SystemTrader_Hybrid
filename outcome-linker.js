@@ -32,6 +32,8 @@ window.OUTCOME_LINKER = (() => {
   function isLearningEligibleSignal(signal) {
     if (!signal) return false;
     if (signal.learningEligible === false) return false;
+    if (String(signal.learningPool || '').toLowerCase() === 'execution' || String(signal.learningPool || '').toLowerCase() === 'near_approved') return true;
+    if (window.DB?.getLearningEligibilityProfile) return window.DB.getLearningEligibilityProfile(signal).learningEligible === true;
     const status = authorityStatus(signal);
     const decision = authorityDecision(signal);
     const executionTier = String(signal?.executionTier || '').toUpperCase();

@@ -23,6 +23,10 @@ window.FEEDBACK_ENGINE = (() => {
   const COOLDOWN_MS = THRESHOLDS.unfreezeCooldownDays * 24 * 60 * 60 * 1000;
 
   function _num(v, d = 0) { const n = Number(v); return Number.isFinite(n) ? n : d; }
+  function setupLabel(signal) {
+    if (typeof window.getStructuralSetupLabel === 'function') return window.getStructuralSetupLabel(signal);
+    return String(signal?.setup || signal?.structureTag || 'Unknown');
+  }
 
   /**
    * Evaluate a signal against the 14-day rolling analytics to detect edge deterioration.
@@ -31,7 +35,7 @@ window.FEEDBACK_ENGINE = (() => {
     if (!signal) return { pass: true, rejections: [] };
 
     // Get latest stats
-    const stats = window.ANALYTICS_ENGINE ? window.ANALYTICS_ENGINE.getCachedStats() : null;
+    const stats = window.ANALYTICS_ENGINE ? window.ANALYTICS_ENGINE.getCachedStats('execution') : null;
     if (!stats || !stats.categories || !stats.setups) {
       return { pass: true, rejections: [], warning: 'feedback_engine_data_unavailable' };
     }
@@ -40,7 +44,7 @@ window.FEEDBACK_ENGINE = (() => {
     if (category === 'OTHER' && window.CATEGORY_ENGINE?.getCategory) {
       category = window.CATEGORY_ENGINE.getCategory(signal.symbol) || 'OTHER';
     }
-    const setup = signal.setup || 'Unknown';
+    const setup = setupLabel(signal);
 
     const catStat = stats.categories[category];
     const setupStat = stats.setups[setup];
@@ -94,7 +98,7 @@ window.FEEDBACK_ENGINE = (() => {
 
   // --- Exposed to UI for Heatmap rendering ---
   function getVetoStatus(identifier, type = 'category') {
-      const stats = window.ANALYTICS_ENGINE ? window.ANALYTICS_ENGINE.getCachedStats() : null;
+      const stats = window.ANALYTICS_ENGINE ? window.ANALYTICS_ENGINE.getCachedStats('execution') : null;
       if (!stats) return 'NORMAL';
       
       const st = type === 'category' ? stats.categories[identifier] : stats.setups[identifier];

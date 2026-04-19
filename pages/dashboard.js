@@ -135,16 +135,14 @@ function __dashAuthorityCoins(coins, scanMeta = {}) {
 }
 
 function getDashboardSetupLabel(coin) {
-  const rawSetup = String(coin?.setup || '').trim();
-  const structureTag = String(coin?.structureTag || '').trim();
-  const normalized = rawSetup.toLowerCase();
-  const triggerNames = new Set([
-    'reclaimbreak', 'minispring', 'lps15m', 'lps4h', 'springconfirm',
-    'volumesurge', 'absorbtest', 'sweepreverse', 'trigger_active',
-    'scalp_trigger', 'setup_ready', 'probe_detection'
-  ]);
-  if (!rawSetup || triggerNames.has(normalized)) return structureTag || 'Setup';
-  return rawSetup;
+  if (typeof window.getStructuralSetupLabel === 'function') return window.getStructuralSetupLabel(coin);
+  return String(coin?.setup || coin?.structureTag || 'Setup').trim();
+}
+
+function dashboardCanShowTradeLevels(coin) {
+  return typeof window.shouldExposeTradeLevels === 'function'
+    ? window.shouldExposeTradeLevels(coin)
+    : false;
 }
 
 function hasBoundPositionEvidence(coin) {
@@ -391,7 +389,7 @@ function renderNoTradeOverlay(noTrade, gateMode, safeST, marketInsight, regime, 
 
 function renderAuthorityTrace(c) {
   // v10.6.9.52: Absolute Contract fulfillment + Position-Bound contradiction guard
-  const trace = c.authorityTrace || c.authTrace || {};
+  const trace = c.authorityTrace || {};
   if (!trace) return '';
 
   const rRej = Array.isArray(trace.rejectionsByTier?.READY) ? trace.rejectionsByTier.READY : [];
@@ -572,6 +570,7 @@ function renderTopSetups(topSetups, btcContext) {
                 <div class="text-xs font-mono mt-4 ${(c.rr || 0) >= 1.2 ? 'font-green' : 'font-yellow'}">${Number(c.rr || 0).toFixed(2)}R</div>
               </div>
             </div>
+            ${dashboardCanShowTradeLevels(c) ? `
             <div class="ccc-prices">
               <div class="ccc-price-cell">
                 <div class="ccc-price-label">Entry</div>
@@ -585,7 +584,8 @@ function renderTopSetups(topSetups, btcContext) {
                 <div class="ccc-price-label">Action</div>
                 <div class="ccc-price-val decision ${decisionClass}">${decisionCode}</div>
               </div>
-            </div>
+            </div>` : `
+            <div class="text-xs text-muted mt-8" style="padding:8px 10px;background:var(--bg-hover);border-radius:8px">Trade levels hidden until action truth is execution-eligible.</div>`}
             <div class="ccc-tags" style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
                <span class="badge ${st === 'READY' ? 'badge-green' : st === 'PLAYABLE' ? 'badge-cyan' : st === 'PROBE' ? 'badge-yellow' : 'badge-gray'}" title="Technical Signal Tier">${st}</span>
                

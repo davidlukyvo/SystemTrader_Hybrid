@@ -1,4 +1,9 @@
 /* ── WATCHLIST PAGE ──────────────────────────────────────── */
+function getWatchlistSetupLabel(coin) {
+  if (typeof window.getStructuralSetupLabel === 'function') return window.getStructuralSetupLabel(coin);
+  return String(coin?.setup || coin?.structureTag || 'No setup').trim() || 'No setup';
+}
+
 function renderWatchlist() {
   $('page-watchlist').innerHTML = `
   <div class="page-header">
@@ -47,7 +52,7 @@ function renderWLColumn(tier, title, sub) {
           <div style="display:flex;justify-content:space-between;align-items:start;gap:6px">
             <div>
               <div class="wl-item-sym">${item.symbol}</div>
-              ${coin ? `<div class="text-xs text-muted" style="margin-top:2px">Score ${coin.score || 0} · ${coin.setup || coin.structureTag || 'No setup'}</div>` : ''}
+              ${coin ? `<div class="text-xs text-muted" style="margin-top:2px">Score ${coin.score || 0} · ${getWatchlistSetupLabel(coin)}</div>` : ''}
             </div>
             <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">
               ${tier!=='best'?`<button class="btn btn-sm btn-success" style="padding:3px 7px;font-size:10px" onclick="moveWL('${item.symbol}','best')">↑Best</button>`:''}

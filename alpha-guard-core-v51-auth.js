@@ -161,6 +161,7 @@ window.EXECUTION_ENGINE_V9 = (() => {
       guardReasons: Array.isArray(capitalPlan.guardReasons) ? capitalPlan.guardReasons : [],
       moderateBullChopCooldownRelax: !!capitalPlan.moderateBullChopCooldownRelax,
       moderateSidewayChopGuardRelax: !!capitalPlan.moderateSidewayChopGuardRelax,
+      moderateSidewayChopProbeLossStreakRelax: !!capitalPlan.moderateSidewayChopProbeLossStreakRelax,
     };
   }
 
@@ -257,14 +258,24 @@ window.EXECUTION_ENGINE_V9 = (() => {
   });
 
   const SIDEWAY_CHOP_SOFT_PROBE_FLOOR = Object.freeze({
-    rr: 1.00,
-    score: 16,
+    rr: 0.95,
+    score: 18,
+    conf: 0.50,
+  });
+
+  const SIDEWAY_CHOP_NARROW_SCORE_CONF_PROBE_BRIDGE = Object.freeze({
+    rr: 1.10,
+    score: 17,
     conf: 0.50,
   });
 
   /* ── Valid Setups ───────────────────────────────────────────────────── */
 
-  const VALID_SETUPS = new Set(['phase c candidate', 'early phase d', 'phase-candidate', 'early-phase-d', 'breakout', 'trend-continuation', 'unclear', 'accumulation']);
+  const VALID_SETUPS = new Set(
+    typeof window.getCanonicalStructuralSetups === 'function'
+      ? window.getCanonicalStructuralSetups()
+      : ['phase-candidate', 'early-phase-d', 'breakout', 'trend-continuation', 'unclear', 'accumulation', 'early-watch']
+  );
   const BLOCKING_ENTRY_QUALITY = new Set(['invalid_structure', 'data_corrupt']);
 
   function isModerateBullChopSignal(signal, context = {}) {
@@ -408,6 +419,9 @@ window.EXECUTION_ENGINE_V9 = (() => {
   function now() { return Date.now(); }
   function pct(v, decimals = 2) { return Number((v * 100).toFixed(decimals)); }
   function normalizeSetup(v) {
+    if (typeof window.normalizeStructuralSetupValue === 'function') {
+      return String(window.normalizeStructuralSetupValue(v, '') || '').trim().toLowerCase();
+    }
     return String(v || '').trim().toLowerCase();
   }
 
@@ -603,6 +617,7 @@ window.EXECUTION_ENGINE_V9 = (() => {
     const score = num(signal.score);
     const conf = num(signal.executionConfidence);
     const setup = normalizeSetup(signal.setup);
+    const moderateSidewayChop = isModerateSidewayChopSignal(signal, portfolioContext);
     const fake = String(signal.fakePumpRisk || '').toLowerCase();
     const chartQ = String(signal.chartEntryQuality || '');
     const entry = num(signal.entry || signal.price);
@@ -618,6 +633,13 @@ window.EXECUTION_ENGINE_V9 = (() => {
       rr >= SIDEWAY_CHOP_SOFT_PROBE_FLOOR.rr &&
       score >= SIDEWAY_CHOP_SOFT_PROBE_FLOOR.score &&
       conf >= SIDEWAY_CHOP_SOFT_PROBE_FLOOR.conf
+    ) return EXEC_TIER.PROBE;
+    if (
+      moderateSidewayChop &&
+      setup !== 'unclear' &&
+      rr >= SIDEWAY_CHOP_NARROW_SCORE_CONF_PROBE_BRIDGE.rr &&
+      score >= SIDEWAY_CHOP_NARROW_SCORE_CONF_PROBE_BRIDGE.score &&
+      conf >= SIDEWAY_CHOP_NARROW_SCORE_CONF_PROBE_BRIDGE.conf
     ) return EXEC_TIER.PROBE;
     return null;
   }
@@ -966,7 +988,9 @@ window.EXECUTION_ENGINE_V9 = (() => {
   function createPositionRecord(signal, tier, sizing, btcContext) {
     const expiryMs = PENDING_EXPIRY_MS[String(btcContext).toLowerCase()] || PENDING_EXPIRY_MS.sideway;
     const signalId = signal.id || signal.signalId || `sig-${uid()}`;
-    const persistedSetup = String(signal.setup || signal.structureTag || '').trim() || 'Unknown';
+    const persistedSetup = typeof window.getStructuralSetupLabel === 'function'
+      ? window.getStructuralSetupLabel(signal)
+      : (String(signal.setup || signal.structureTag || '').trim() || 'Unknown');
 
     return {
       /* Identity */
@@ -2070,6 +2094,7 @@ window.EXECUTION_ENGINE_V9 = (() => {
     normalizeTrigger,
     buildAuthorityMeta,
     checkPlayablePath,       // Feature #4 + v9.3.1 (raised conf + RR downgrade)
+    getAdaptiveSoftTier,
     buildScanSummary,        // Feature #5: alignment
     SIDEWAY_DENSITY_LIMITS,  // Feature 3: exposed for tests
     SIDEWAY_HQ_FLOOR,        // Feature 1: exposed for tests

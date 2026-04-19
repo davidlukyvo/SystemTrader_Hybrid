@@ -89,7 +89,17 @@ async function renderPersistedRecordInspector() {
       <td class="text-xs">${s.executionTier}</td>
       <td class="mono" style="font-size:10px">${s.executionGatePassed ? '<span class="text-green">PASS</span>' : '<span class="text-red">FAIL</span>'}</td>
       <td class="mono" style="font-size:10px">${s.executionActionable ? 'YES' : 'NO'}</td>
+      <td class="mono" style="font-size:10px">${s.isTechnicalCandidate ? 'YES' : 'NO'}</td>
+      <td class="mono" style="font-size:10px">${s.isExecutionApproved ? 'YES' : 'NO'}</td>
+      <td class="mono" style="font-size:10px">${s.isExecutionRejected ? 'YES' : 'NO'}</td>
+      <td class="mono" style="font-size:10px">${s.isAlertEligible ? 'YES' : 'NO'}</td>
+      <td class="mono" style="font-size:10px">${s.isPortfolioBound ? 'YES' : 'NO'}</td>
+      <td class="mono" style="font-size:10px">${Number(s.rawScannerScore || 0)}</td>
+      <td class="mono" style="font-size:10px">${Number(s.riskAdjustedScore || 0)}</td>
+      <td class="mono" style="font-size:10px">${Number(s.executionQualityScore || 0)}</td>
       <td class="mono" style="font-size:10px">${s.learningEligible ? 'YES' : 'NO'}</td>
+      <td class="mono" style="font-size:10px">${s.learningPool || 'excluded'}</td>
+      <td class="mono" style="font-size:10px">${s.hasAuthorityTrace ? 'YES' : 'NO'}</td>
       <td class="text-xs text-muted" title="${s.authorityReason}">${s.authorityReason.length > 20 ? s.authorityReason.slice(0, 20) + '...' : s.authorityReason}</td>
     </tr>
   `).join('');
@@ -111,7 +121,17 @@ async function renderPersistedRecordInspector() {
               <th>Tier</th>
               <th>Gate</th>
               <th>Actn</th>
+              <th>Tech</th>
+              <th>Exec</th>
+              <th>Reject</th>
+              <th>Alert</th>
+              <th>Bound</th>
+              <th>Raw</th>
+              <th>Risk</th>
+              <th>ExecQ</th>
               <th>Learn</th>
+              <th>Pool</th>
+              <th>Trace</th>
               <th>Reason</th>
             </tr>
           </thead>
@@ -191,7 +211,8 @@ function renderScanSignalDetailContent(signals) {
   }
 
   var statusOrder = { READY: 0, PLAYABLE: 1, PROBE: 2, WATCH: 3, EARLY: 4, AVOID: 5 };
-  var displayStatus = function(row) { return (typeof getExecutionDisplayStatus === 'function' ? getExecutionDisplayStatus(row) : String(row.tradeState || row.executionTier || row.status || 'UNKNOWN')).toUpperCase(); };
+  var displayStatus = function(row) { return (typeof getExecutionDisplayStatus === 'function' ? getExecutionDisplayStatus(row) : String(row.displayStatus || row.finalAuthorityStatus || row.tradeState || row.executionTier || row.status || 'UNKNOWN')).toUpperCase(); };
+  var setupLabel = function(row) { return (typeof getStructuralSetupLabel === 'function' ? getStructuralSetupLabel(row) : String(row.setup || row.structureTag || '—')); };
   
   filtered.sort(function(a, b) {
     var aStatus = displayStatus(a);
@@ -206,7 +227,7 @@ function renderScanSignalDetailContent(signals) {
     var statusCls = display === 'READY' ? 'badge-green' : display === 'PLAYABLE' ? 'badge-cyan' : display === 'PROBE' ? 'badge-yellow' : ['EARLY','WATCH'].includes(display) ? 'badge-gray' : 'badge-red';
     var cat = s.category || 'OTHER';
     var evaluated = Array.isArray(s.outcomesEvaluated) ? s.outcomesEvaluated : [];
-    return '<tr><td><span class="mono fw-700">' + s.symbol + '</span></td><td><span class="badge badge-purple">' + cat + '</span></td><td><span class="badge ' + statusCls + '">' + display + '</span></td><td class="text-sm">' + (s.setup || '—') + '</td><td class="mono fw-700">' + (s.riskAdjustedScore || s.score || 0) + '</td><td class="mono">' + (s.rr || 0).toFixed(1) + 'x</td><td class="mono">' + Math.round((s.executionConfidence || 0) * 100) + '%</td><td class="mono">' + fmtPrice(s.entry) + '</td><td class="text-xs">' + (s.entryTiming || '—') + '</td><td class="text-xs">' + (evaluated.length ? evaluated.join(', ') : '<span class="text-muted">pending</span>') + '</td></tr>';
+    return '<tr><td><span class="mono fw-700">' + s.symbol + '</span></td><td><span class="badge badge-purple">' + cat + '</span></td><td><span class="badge ' + statusCls + '">' + display + '</span></td><td class="text-sm">' + setupLabel(s) + '</td><td class="mono fw-700">' + (s.riskAdjustedScore || s.score || 0) + '</td><td class="mono">' + (s.rr || 0).toFixed(1) + 'x</td><td class="mono">' + Math.round((s.executionConfidence || 0) * 100) + '%</td><td class="mono">' + fmtPrice(s.entry) + '</td><td class="text-xs">' + (s.entryTiming || '—') + '</td><td class="text-xs">' + (evaluated.length ? evaluated.join(', ') : '<span class="text-muted">pending</span>') + '</td></tr>';
   }).join('');
 
   detail.innerHTML = '<div class="card"><div class="card-title">Signals from scan (' + signals.length + ')</div>' + filterHtml + '<div style="overflow-x:auto"><table class="j-table"><thead><tr><th>Symbol</th><th>Category</th><th>Status</th><th>Setup</th><th>Score</th><th>RR</th><th>Conf</th><th>Entry</th><th>Timing</th><th>Outcomes</th></tr></thead><tbody>' + tableRows + '</tbody></table></div></div>';

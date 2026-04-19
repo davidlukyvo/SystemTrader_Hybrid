@@ -30,6 +30,103 @@ SystemTrader is an **Institutional-Grade Execution Planning Engine** for cryptoc
 
 ---
 
+## 🧱 Hardening Program Summary (Tasks 1–11)
+
+This branch has gone through an explicit hardening sequence. The most important outcomes are:
+
+### Task 1 — Authority Persistence Cleanup
+- Old problem: authority truth was fragmented across `status`, `finalAuthorityStatus`, `displayStatus`, and legacy `authTrace` fields.
+- Patch outcome: persistence and UI resolution now treat the authority contract as canonical in this order:
+  - `displayStatus`
+  - `finalAuthorityStatus`
+  - legacy `status` fallback only
+- Canonical rule:
+  - `authorityTrace` is the runtime audit field
+  - `authTrace` is legacy only and should not be used as UI/runtime truth
+- Primary files:
+  - `state-v51-auth.js`
+  - `db.js`
+  - `pages/scanner.js`
+  - `pages/dashboard.js`
+
+### Task 2 — Setup Taxonomy Cleanup
+- Old problem: structural setup and trigger/timing labels could drift or be mixed together.
+- Patch outcome: structural setup now comes from a canonical vocabulary and is normalized before persistence / authority validation.
+- Canonical rule:
+  - structural truth: `setup` / `structureTag` normalized through `normalizeStructuralSetupValue()`
+  - trigger truth: `entrySignal` / `entryTiming`
+  - trigger-like labels must never pollute structural setup
+- Primary files:
+  - `state-v51-auth.js`
+  - `scanner-analysis.js`
+  - `alpha-guard-core-v51-auth.js`
+  - `live-scanner.js`
+
+### Task 3 — Analytics Truth Cleanup
+- Old problem: analytics / learning truth was too close to strict execution-only truth and starved useful near-approved populations.
+- Patch outcome: learning eligibility is now separated into explicit pools.
+- Canonical rule:
+  - `learningEligible`
+  - `learningPool`: `execution` | `near_approved` | `excluded`
+  - `learningClassification`: execution tier label or `near_approved` / reject-style exclusion
+- Primary files:
+  - `db.js`
+  - `learning-engine.js`
+  - `outcome-linker.js`
+
+### Task 4 — Score Calibration Support
+- Old problem: score meanings were easy to blur between scanner, analytics, ranking, and execution contexts.
+- Patch outcome: normalized records now carry score semantics explicitly.
+- Canonical rule:
+  - scanner score -> `rawScannerScore`
+  - analytics score -> `riskAdjustedScore`
+  - ranking score -> `rankScore`
+  - execution quality score -> `executionQualityScore`
+- Primary files:
+  - `db.js`
+  - `analytics-engine.js`
+  - `scanner-refinement.js`
+
+### Task 5 — Alert Semantics Cleanup
+- Old problem: Telegram could drift into mixed truth, where technical optimism and execution rejection were presented together.
+- Patch outcome: Telegram now follows display/action truth first, then technical context second.
+- Canonical rule:
+  - alerts must lead with execution truth
+  - trade details are exposure-controlled
+  - `technicalTop3` must never be mistaken for deploy permission
+- Primary files:
+  - `alert-engine.js`
+  - `telegram.js`
+  - `scanner-refinement.js`
+
+### Task 6 — Validation Harness
+- Added lightweight regression harness to lock setup/trigger separation, authority truth, alert truth, learning separation, and position-bound semantics.
+- Primary files:
+  - `validation/validation-harness.js`
+  - `validation/run-regression-harness.js`
+
+### Task 7 — Taxonomy + Learning Finalization
+- `early-watch` was confirmed as a canonical structural setup.
+- `near_approved` learning population became first-class and no longer depends on pure execution-approved truth.
+
+### Task 8 — Narrow Defensive Tuning Audit
+- Added a very narrow `loss_streak_guard_2` carve-out for clean `PROBE` candidates in `sideway + CHOP`.
+
+### Task 9 — Narrow PROBE Lane Audit
+- Added a tiny sideway/CHOP soft-PROBE bridge:
+  - `rr >= 0.95`, `score >= 18`, `conf >= 0.50`
+
+### Task 10 — Narrow PROBE Score/Conf Audit
+- Added a second tiny bridge for semantically clean candidates:
+  - `rr >= 1.10`, `score >= 17`, `conf >= 0.50`, `setup !== 'unclear'`
+
+### Task 11 — Runtime Population Audit Only
+- Final conclusion of the current cycle:
+  - stop tuning for now
+  - current `sideway / CHOP` starvation looks more like weak live population than a clear threshold bug
+
+---
+
 ## 🧠 Methodology: Wyckoff-VSA Hybrid
 
 The signal detection layer uses a combination of two institutional frameworks:
@@ -71,6 +168,7 @@ scanner-analysis.js → Scanner Phase 2B: deep scan / scoring / structure analys
 scanner-refinement.js → Scanner Phase 2C: authority merge, Top3 derivation, shortlist semantics
 scanner-persistence.js → Scanner Phase 2D: finalized scan persistence + cache/session sync
 live-scanner.js     → Scanner orchestration shell (coordinates modular scanner stages)
+runtime-audit.js    → Runtime blocker distribution + short-summary utility for live scan review
 outcome-evaluator.js → D1-D30 outcome checkpoints
 learning-engine.js  → Bayesian edge blending
 outcome-linker.js   → Links scan signals to trade outcomes
@@ -212,13 +310,19 @@ CoinGecko Universe (1000+ coins)
    • Historical repair: `db.js -> repairHistoricalSignalsLearning()` runs
      one-time at boot to recompute dirty legacy signal rows
    • Learning: Prior + Observed blending (blendLearning)
-   • Fail-closed learning contract:
+   • Learning eligibility now uses explicit pools:
+     - `execution`: fully execution-approved learning population
+     - `near_approved`: semantically clean near-approved population
+     - `excluded`: blocked / carry / polluted / rejected population
+   • Strict execution-quality learning still requires:
      - `authorityDecision !== REJECT`
      - `executionGatePassed === true`
      - `executionActionable === true`
      - display tier must be `READY` / `PLAYABLE` / `PROBE`
      - blocked reasons (`dedup`, `capital_guard`, `pre_gate_blocked`,
        `all_tiers_rejected`, `no_execution_result`) are ineligible
+   • Near-approved learning exists specifically to avoid analytics starvation
+     while preserving execution truth separation.
    • Result: updates symbol/setup win-rate → feeds back to Veto 6
 ```
 
@@ -254,7 +358,14 @@ To preserve absolute parity between what the Scanner analyzes and what Alpha Gua
 ### 1. Setup Field (`setup` / `structureTag`)
 - **Owner:** `scoreStructure()` in Scanner.
 - **Purpose:** Maps the Wyckoff phase to determine base qualification tier.
-- **Expected Values:** Must exactly match the engine `VALID_SETUPS` whitelist (`phase-candidate`, `breakout`, `accumulation`, etc.).
+- **Expected Values:** Must normalize into the canonical structural setup vocabulary:
+  - `accumulation`
+  - `phase-candidate`
+  - `early-phase-d`
+  - `breakout`
+  - `trend-continuation`
+  - `unclear`
+  - `early-watch`
 
 ### 2. Trigger Field (`entrySignal` / `entryTiming`)
 - **Owner:** `inferInstitutionalEntrySignal()` in Scanner.
@@ -420,6 +531,36 @@ FETCH_FAIL → Data retrieval failed for this symbol
 **Session State:** `ST.save()` persists the entire ST object snapshot to `DB.setSetting('sessionState')`. On page reload, `ST.init()` restores from DB.
 
 **Legacy:** `DB.migrateFromLocalStorage()` runs once to migrate old localStorage data.
+
+### Signal normalization contract
+
+Normalized signal rows now carry explicit score and learning semantics.
+
+Score semantics:
+
+- `rawScannerScore` = raw scanner signal quality
+- `riskAdjustedScore` = analytics / learning adjusted quality
+- `rankScore` = ranking shortlist score
+- `executionQualityScore` = execution-facing quality interpretation
+
+`scoreSemantics` should map these domains explicitly:
+
+```javascript
+{
+  scanner: 'rawScannerScore',
+  analytics: 'riskAdjustedScore',
+  ranking: 'rankScore',
+  execution: 'executionQualityScore',
+}
+```
+
+Learning semantics:
+
+- `learningEligible`
+- `learningPool`
+- `learningClassification`
+
+These fields are part of the normalized persisted signal contract and should be preferred over older inferred analytics heuristics.
 
 ---
 
@@ -654,13 +795,72 @@ This handover describes the current active authority branch:
 - Position-bound rendering must only activate when there is evidence of a live bound position (e.g. `ARMED` / `PENDING` / `ACTIVE` / `PARTIAL_EXIT`, or explicit portfolio-binding source)
 - Runtime now supports a **moderate soft-unlock path** in both `bull + CHOP` and `sideway + CHOP` so Alpha Guard can surface selective `PROBE` / `PLAYABLE` setups without reopening `WATCH` spam
 - In `sideway + CHOP`, current soft pre-gate floors are `rr >= 0.65`, `score >= 12`, `conf >= 0.46`
-- In `sideway + CHOP`, adaptive soft PROBE unlock may pass at approximately `rr >= 1.0`, `score >= 16`, `conf >= 0.50`
+- In `sideway + CHOP`, adaptive soft PROBE unlock currently includes:
+  - soft bridge: `rr >= 0.95`, `score >= 18`, `conf >= 0.50`
+  - narrow score/conf bridge: `rr >= 1.10`, `score >= 17`, `conf >= 0.50`, and `setup !== 'unclear'`
 - Current sideway capital profile in `capital-engine.js` is `cooldownMs = 90m`, `maxTradesPerDay = 3`, `hardExposureCapPct = 5%`
+- `capital-engine.js` also contains a narrow `loss_streak_guard_2` relaxation for clean `PROBE` candidates in `sideway + CHOP`:
+  - only exactly 2 consecutive losses
+  - no open positions
+  - `rr >= 1.0`, `score >= 16`, `conf >= 0.50`
+  - `fakePumpRisk !== 'high'`
 - `clean-universe.js` now uses a hard-exclude + soft-exclude split: majors may re-enter when regime is compatible, while meme assets are tighter and should stay blocked in `sideway + CHOP`
 - `totalEquity` boot fallback must never resolve to `missing`; runtime should prefer persisted account/session equity and only then fall back to a paper-equity default
 - Strategic Fear & Greed fetch is now browser-safe: direct `alternative.me` browser calls are disabled by default, and runtime should rely on cached/default sentiment unless a proxy URL is configured
 - Learning/runtime wording note: logs may say `Historical dataset snapshot rebuilt (all-time persisted samples, not current scan)`; this refers to the persisted all-time learning dataset, not current-scan-only samples
 - Verified runtime outcome on `v10.6.9.56-ModerateTelegram`: `sideway + CHOP` batch produced `1 gate-passed | new-paper:1 persisted:1` and Telegram successfully delivered a `PLAYABLE` alert (`reason: top1_changed`)
+
+### April 19, 2026 runtime audit conclusion
+
+Recent narrow tuning tasks were completed and kept intentionally small:
+
+- Task 8: narrow `loss_streak_guard_2` carve-out for clean `PROBE` in `sideway + CHOP`
+- Task 9: tiny sideway/CHOP soft-PROBE RR bridge
+- Task 10: tiny sideway/CHOP score/conf bridge for semantically clean candidates
+- Task 11: audit-only conclusion, no further patch recommended
+
+Observed runtime population after those patches remained dominated by:
+
+- `capital_blocked` via `loss_streak_guard_2`
+- `pre_gate_blocked:WATCH`
+- weak batch characteristics such as `conf = 0.50`, `trigger = wait`, `rr < 1.20`, and a meaningful share of `setup = unclear`
+
+Current operating conclusion:
+
+- **Do not continue loosening the engine by default**
+- repeated `0 gate-passed` in current `sideway / CHOP` batches now looks more like **weak live population** than a clear threshold bug
+- future tuning should reopen only if repeated runtime audits show a sufficiently large **clean almost-PROBE** subgroup that misses just one narrow threshold
+
+### Runtime Audit utility (April 19, 2026)
+
+The Scanner now includes a live runtime audit helper so future review does not require manual raw-log reading.
+
+- script: `runtime-audit.js`
+- UI surface: `pages/scanner.js`
+- script tag included in `index.html`
+- latest summary snapshot is stored in `window.__LAST_RUNTIME_AUDIT__`
+
+Console helpers:
+
+```javascript
+RUNTIME_AUDIT.summarizeLatest()
+RUNTIME_AUDIT.printLatest()
+window.__LAST_RUNTIME_AUDIT__
+```
+
+Scanner panel actions:
+
+- `Copy Short Summary`
+- `Copy JSON`
+- `Export JSON`
+
+`Copy Short Summary` is the preferred handoff artifact for quick audit reviews. It includes:
+
+- blocker group counts
+- key population metrics
+- top blockers
+- latest execution trace summary
+- a final `Decision:` line indicating whether to keep the engine unchanged or inspect further
 
 ---
 
@@ -670,7 +870,8 @@ This handover describes the current active authority branch:
 Only these setup names pass `classifySignalState()`:
 ```
 'phase c candidate', 'early phase d', 'phase-candidate', 'early-phase-d',
-'breakout', 'trend-continuation', 'unclear', 'accumulation'
+'breakout', 'trend-continuation', 'unclear', 'accumulation',
+'early watch', 'early-watch'
 ```
 If scanner produces a different setup name (e.g. `probe_detection`), the coin will be **WATCH** regardless of score. This is intentional strictness but can cause Portfolio-Bound contradictions.
 

@@ -38,6 +38,8 @@ window.LEARNING_ENGINE = (() => {
   function isLearningEligibleSignal(signal) {
     if (!signal) return false;
     if (signal.learningEligible === false) return false;
+    if (String(signal.learningPool || '').toLowerCase() === 'execution' || String(signal.learningPool || '').toLowerCase() === 'near_approved') return true;
+    if (window.DB?.getLearningEligibilityProfile) return window.DB.getLearningEligibilityProfile(signal).learningEligible === true;
     const status = authorityStatus(signal);
     const decision = authorityDecision(signal);
     const executionTier = String(signal?.executionTier || '').toUpperCase();
@@ -51,6 +53,7 @@ window.LEARNING_ENGINE = (() => {
   }
 
   function normalizeClassification(signal) {
+    if (signal?.learningClassification) return String(signal.learningClassification).toLowerCase();
     const status = authorityStatus(signal);
     const decision = authorityDecision(signal);
     
@@ -72,14 +75,17 @@ window.LEARNING_ENGINE = (() => {
   function buildDataset(signals = []) {
     const rows = Array.isArray(signals) ? signals.filter(Boolean) : [];
     const byClassification = new Map();
+    const byLearningPool = new Map();
     const bySetup = new Map();
     let learningEligibleCount = 0;
 
     for (const s of rows) {
       const classification = normalizeClassification(s);
       const learningEligible = isLearningEligibleSignal(s);
+      const learningPool = String(s.learningPool || (learningEligible ? 'execution' : 'excluded')).toLowerCase();
       if (learningEligible) learningEligibleCount++;
       byClassification.set(classification, (byClassification.get(classification) || 0) + 1);
+      byLearningPool.set(learningPool, (byLearningPool.get(learningPool) || 0) + 1);
 
       const setup = normalizeSetup(s.setup || s.structureTag || 'unknown');
       if (!bySetup.has(setup)) {
@@ -102,6 +108,7 @@ window.LEARNING_ENGINE = (() => {
       totalSignals: rows.length,
       learningEligibleSignals: learningEligibleCount,
       byClassification: Object.fromEntries(byClassification.entries()),
+      byLearningPool: Object.fromEntries(byLearningPool.entries()),
       setupCoverage: Array.from(bySetup.values()).sort((a, b) => b.learningEligible - a.learningEligible || b.total - a.total),
     };
 

@@ -6,22 +6,49 @@
 var analyticsView = 'setup';
 var analyticsData = null;
 var analyticsLoading = false;
+var analyticsPopulation = 'execution';
 
 async function loadAnalyticsData() {
   if (!window.OUTCOME_EVAL) return;
   analyticsLoading = true;
   try {
-    const category = await OUTCOME_EVAL.getCategoryPerformance();
-    const setup = await OUTCOME_EVAL.getSetupPerformance();
-    const regime = await OUTCOME_EVAL.getRegimePerformance();
-    const score = await OUTCOME_EVAL.getScoreBucketPerformance();
-    const holding = await OUTCOME_EVAL.getHoldingPeriodPerformance();
+    const category = await OUTCOME_EVAL.getCategoryPerformance(analyticsPopulation);
+    const setup = await OUTCOME_EVAL.getSetupPerformance(analyticsPopulation);
+    const regime = await OUTCOME_EVAL.getRegimePerformance(analyticsPopulation);
+    const score = await OUTCOME_EVAL.getScoreBucketPerformance(analyticsPopulation);
+    const holding = await OUTCOME_EVAL.getHoldingPeriodPerformance(analyticsPopulation);
+    const truthSummary = await OUTCOME_EVAL.getAnalyticsTruthSummary();
     const stats = await DB.getStats();
-    analyticsData = { category: category, setup: setup, regime: regime, score: score, holding: holding, stats: stats };
+    analyticsData = { category: category, setup: setup, regime: regime, score: score, holding: holding, truthSummary: truthSummary, stats: stats, population: analyticsPopulation };
   } catch (err) {
     console.error('[ANALYTICS] Load error:', err);
   }
   analyticsLoading = false;
+}
+
+function analyticsPopulationLabel() {
+  return window.ANALYTICS_ENGINE?.POPULATION_LABELS?.[analyticsPopulation] || 'Execution-approved candidates';
+}
+
+function analyticsScoreFieldLabel() {
+  return window.OUTCOME_EVAL?.getAnalyticsScoreFieldLabel ? window.OUTCOME_EVAL.getAnalyticsScoreFieldLabel() : 'riskAdjustedScore';
+}
+
+function renderTruthBasisCard() {
+  var truth = (analyticsData && analyticsData.truthSummary) || null;
+  if (!truth) return '';
+  return '<div class="card mb-20">' +
+    '<div class="card-title">Truth Basis</div>' +
+    '<div class="text-sm text-muted" style="margin-bottom:12px">Performance tables currently use <strong>' + analyticsPopulationLabel() + '</strong>. Portfolio-bound carryovers are excluded from expectancy and feedback views.</div>' +
+    '<div class="grid-4 gap-8">' +
+      '<div style="padding:12px;border-radius:8px;background:var(--bg-hover)"><div class="text-xs text-muted">Technical Signals</div><div class="fw-700">' + (truth.technicalSignals || 0) + '</div><div class="text-xs text-muted">Outcomes ' + (truth.technicalOutcomes || 0) + '</div></div>' +
+      '<div style="padding:12px;border-radius:8px;background:var(--bg-hover)"><div class="text-xs text-muted">Execution Signals</div><div class="fw-700">' + (truth.executionSignals || 0) + '</div><div class="text-xs text-muted">Outcomes ' + (truth.executionOutcomes || 0) + '</div></div>' +
+      '<div style="padding:12px;border-radius:8px;background:var(--bg-hover)"><div class="text-xs text-muted">Alert Signals</div><div class="fw-700">' + (truth.alertSignals || 0) + '</div><div class="text-xs text-muted">Outcomes ' + (truth.alertOutcomes || 0) + '</div></div>' +
+      '<div style="padding:12px;border-radius:8px;background:var(--bg-hover)"><div class="text-xs text-muted">Rejected Signals</div><div class="fw-700">' + (truth.rejectedSignals || 0) + '</div><div class="text-xs text-muted">Outcomes ' + (truth.rejectedOutcomes || 0) + '</div></div>' +
+    '</div>' +
+    '<div class="text-xs text-muted" style="margin-top:10px">Score bucket basis: <strong>' + analyticsScoreFieldLabel() + '</strong> (risk-adjusted quality), not raw scanner score.</div>' +
+    '<div class="text-xs text-muted" style="margin-top:6px">Portfolio-bound outcomes excluded: ' + (truth.portfolioBoundOutcomes || 0) + '</div>' +
+  '</div>';
 }
 
 function renderAnalyticsTable(headers, rows) {
@@ -53,7 +80,7 @@ function renderCategoryView() {
     '</div>'
   ) : '';
 
-  return '<div class="card mb-20"><div class="card-title">Category Performance</div><div class="text-sm text-muted" style="margin-bottom:12px">Tracking win/loss ratio theo nhom Narrative (AI, MEME, RWA, L1...).</div>' + summaryHtml + renderAnalyticsTable(headers, rows) + '</div>';
+  return '<div class="card mb-20"><div class="card-title">Category Performance</div><div class="text-sm text-muted" style="margin-bottom:12px">Tracking win/loss ratio theo nhom Narrative (AI, MEME, RWA, L1...) using ' + analyticsPopulationLabel() + ' only.</div>' + summaryHtml + renderAnalyticsTable(headers, rows) + '</div>';
 }
 
 function renderSetupView() {
@@ -64,7 +91,7 @@ function renderSetupView() {
     var pctColor = r.avgPctChange >= 0 ? 'var(--green)' : 'var(--red)';
     return '<tr><td class="fw-700">' + r.setup + '</td><td class="mono">' + r.total + '</td><td class="mono text-green">' + r.winners + '</td><td class="mono text-red">' + r.losers + '</td><td class="mono fw-700" style="color:' + wrColor + '">' + r.winRate + '%</td><td class="mono" style="color:' + pctColor + '">' + (r.avgPctChange > 0 ? '+' : '') + r.avgPctChange + '%</td><td class="mono">' + r.avgR + 'R</td></tr>';
   });
-  return '<div class="card mb-20"><div class="card-title">Setup Performance</div><div class="text-sm text-muted" style="margin-bottom:12px">Win rate va avg return theo tung loai setup. Data tu checkpoint snapshot evaluation.</div>' + renderAnalyticsTable(headers, rows) + '</div>';
+  return '<div class="card mb-20"><div class="card-title">Setup Performance</div><div class="text-sm text-muted" style="margin-bottom:12px">Win rate va avg return theo tung loai setup using ' + analyticsPopulationLabel() + '. Data tu checkpoint snapshot evaluation.</div>' + renderAnalyticsTable(headers, rows) + '</div>';
 }
 
 function renderRegimeView() {
@@ -76,7 +103,7 @@ function renderRegimeView() {
     var pctColor = r.avgPctChange >= 0 ? 'var(--green)' : 'var(--red)';
     return '<tr><td class="fw-700">' + (regimeEmoji[r.regime] || '?') + ' ' + r.regime + '</td><td class="mono">' + r.total + '</td><td class="mono text-green">' + r.winners + '</td><td class="mono text-red">' + r.losers + '</td><td class="mono fw-700" style="color:' + wrColor + '">' + r.winRate + '%</td><td class="mono" style="color:' + pctColor + '">' + (r.avgPctChange > 0 ? '+' : '') + r.avgPctChange + '%</td></tr>';
   });
-  return '<div class="card mb-20"><div class="card-title">Regime Performance</div><div class="text-sm text-muted" style="margin-bottom:12px">Signal performance phan theo BTC context luc scan. Regime nao cho edge tot nhat?</div>' + renderAnalyticsTable(headers, rows) + '</div>';
+  return '<div class="card mb-20"><div class="card-title">Regime Performance</div><div class="text-sm text-muted" style="margin-bottom:12px">Signal performance phan theo BTC context luc scan using ' + analyticsPopulationLabel() + '.</div>' + renderAnalyticsTable(headers, rows) + '</div>';
 }
 
 function renderScoreView() {
@@ -87,7 +114,7 @@ function renderScoreView() {
     var pctColor = r.avgPctChange >= 0 ? 'var(--green)' : 'var(--red)';
     return '<tr><td class="fw-700">' + r.bucket + '</td><td class="mono">' + r.total + '</td><td class="mono text-green">' + r.winners + '</td><td class="mono text-red">' + r.losers + '</td><td class="mono fw-700" style="color:' + wrColor + '">' + r.winRate + '%</td><td class="mono" style="color:' + pctColor + '">' + (r.avgPctChange > 0 ? '+' : '') + r.avgPctChange + '%</td></tr>';
   });
-  return '<div class="card mb-20"><div class="card-title">Score Bucket Performance</div><div class="text-sm text-muted" style="margin-bottom:12px">Coin score 80+ thuc su perform tot hon score 40-60? Data se cho cau tra loi.</div>' + renderAnalyticsTable(headers, rows) + '</div>';
+  return '<div class="card mb-20"><div class="card-title">Score Bucket Performance</div><div class="text-sm text-muted" style="margin-bottom:12px">Buckets are evaluated on <strong>' + analyticsScoreFieldLabel() + '</strong> using ' + analyticsPopulationLabel() + ' only. Raw scanner score remains a gate/ranking input, not the analytics bucket basis.</div>' + renderAnalyticsTable(headers, rows) + '</div>';
 }
 
 function renderHoldingView() {
@@ -98,16 +125,16 @@ function renderHoldingView() {
     var pctColor = r.avgPctChange >= 0 ? 'var(--green)' : 'var(--red)';
     return '<tr><td class="fw-700">' + r.period + '</td><td class="mono">' + r.total + '</td><td class="mono text-green">' + r.winners + '</td><td class="mono text-red">' + r.losers + '</td><td class="mono fw-700" style="color:' + wrColor + '">' + r.winRate + '%</td><td class="mono" style="color:' + pctColor + '">' + (r.avgPctChange > 0 ? '+' : '') + r.avgPctChange + '%</td><td class="mono">' + r.avgR + 'R</td></tr>';
   });
-  return '<div class="card mb-20"><div class="card-title">Holding Period Performance</div><div class="text-sm text-muted" style="margin-bottom:12px">D1 vs D3 vs D7 vs D14 vs D30 — khoang thoi gian nao toi uu cho edge cua ban?</div>' + renderAnalyticsTable(headers, rows) + '</div>';
+  return '<div class="card mb-20"><div class="card-title">Holding Period Performance</div><div class="text-sm text-muted" style="margin-bottom:12px">D1 vs D3 vs D7 vs D14 vs D30 — khoang thoi gian nao toi uu cho edge cua ban? Based on ' + analyticsPopulationLabel() + ' only.</div>' + renderAnalyticsTable(headers, rows) + '</div>';
 }
 
 function renderHeatmapView() {
   if (!window.ANALYTICS_ENGINE) return '<div class="text-sm text-muted">Feedback Engine not available.</div>';
   
   // Calculate live stats (don't force, rely on cache if recent)
-  const stats = window.ANALYTICS_ENGINE.getCachedStats();
+  const stats = window.ANALYTICS_ENGINE.getCachedStats('execution');
   if (!stats || !stats.categories || !stats.setups) {
-    window.ANALYTICS_ENGINE.computeRollingStats().then(() => {
+    window.ANALYTICS_ENGINE.computeRollingStats(false, 'execution').then(() => {
         if (analyticsView === 'heatmap') renderAnalytics();
     });
     return '<div class="text-center text-muted p-20">⏳ Computing 14d Rolling Analytics...</div>';
@@ -144,7 +171,7 @@ function renderHeatmapView() {
 
   const html = 
     `<div class="card mb-20"><div class="card-title">Category Feedback Loop (14d Rolling)</div>
-     <div class="text-sm text-muted mb-12">Win rate tracking. $<span class="text-red">${th.vetoWinRate}%</span> triggers Auto-Veto, $<span class="text-yellow">${th.downgradeWinRate}%</span> triggers PROBE downgrade. (Min ${th.minSampleSize} trades).</div>` +
+     <div class="text-sm text-muted mb-12">Win rate tracking from execution-approved outcomes only. $<span class="text-red">${th.vetoWinRate}%</span> triggers Auto-Veto, $<span class="text-yellow">${th.downgradeWinRate}%</span> triggers PROBE downgrade. (Min ${th.minSampleSize} trades).</div>` +
      renderAnalyticsTable(catHeaders, catRows) +
     `</div>
     <div class="card mb-20"><div class="card-title">Setup Feedback Loop (14d Rolling)</div>`+
@@ -156,9 +183,9 @@ function renderHeatmapView() {
 
 function renderAuditView() {
   if (!window.ANALYTICS_ENGINE) return '<div class="text-sm text-muted">Analytics Engine not available.</div>';
-  const stats = window.ANALYTICS_ENGINE.getCachedStats();
+  const stats = window.ANALYTICS_ENGINE.getCachedStats('execution');
   if (!stats || !stats.updatedAt) {
-    window.ANALYTICS_ENGINE.computeRollingStats().then(() => {
+    window.ANALYTICS_ENGINE.computeRollingStats(false, 'execution').then(() => {
       if (analyticsView === 'audit') renderAnalytics();
     });
     return '<div class="text-center text-muted p-20">⏳ Computing Audit Data...</div>';
@@ -171,6 +198,7 @@ function renderAuditView() {
   const configHtml = `
     <div class="card mb-20" style="border-left: 4px solid var(--cyan)">
       <div class="card-title">⚙️ Active Hardening Config</div>
+      <div class="text-sm text-muted mb-12">Expectancy audit below is computed from execution-approved, non-portfolio-bound outcomes only.</div>
       <div style="display:flex; gap:12px; flex-wrap:wrap">
         ${renderConfigTag(cfg.execution?.READY_SCORE, 'READY Score')}
         ${renderConfigTag(cfg.execution?.READY_CONF, 'READY Conf')}
@@ -230,7 +258,7 @@ async function renderAnalytics() {
     analyticsView === 'score' ? renderScoreView() :
     renderHoldingView();
 
-  page.innerHTML = '<div class="page-header"><div class="page-title">📊 Analytics — Edge Performance</div><div class="page-sub">Checkpoint snapshot evaluation · D1/D3/D7/D14/D30 · ' + totalOutcomes + ' outcome records</div></div>' +
+  page.innerHTML = '<div class="page-header"><div class="page-title">📊 Analytics — Edge Performance</div><div class="page-sub">Checkpoint snapshot evaluation · D1/D3/D7/D14/D30 · ' + totalOutcomes + ' outcome records · basis: ' + analyticsPopulationLabel() + '</div></div>' +
     '<div class="grid-4 mb-20">' +
       '<div class="stat-card stat-green"><div class="stat-label">Signals</div><div class="stat-value">' + (stats.signals || 0) + '</div><div class="stat-note">Total recorded</div></div>' +
       '<div class="stat-card stat-cyan"><div class="stat-label">Outcomes</div><div class="stat-value">' + (stats.outcomes || 0) + '</div><div class="stat-note">Checkpoints evaluated</div></div>' +
@@ -249,6 +277,7 @@ async function renderAnalytics() {
       '<button class="btn btn-sm btn-outline" onclick="refreshOutcomesManual()" id="btnRefreshOutcomes">🔄 Refresh Outcomes</button>' +
       '<button class="btn btn-sm btn-outline" onclick="reloadAnalytics()">♻ Reload</button>' +
     '</div>' +
+    renderTruthBasisCard() +
     '<div id="analyticsContent">' + viewContent + '</div>' +
     '<div class="card mt-20" style="border-color:rgba(0,229,255,.2)"><div class="card-title">💡 Cach doc Analytics</div><div class="text-sm text-muted" style="line-height:1.7"><strong>14d Heatmap (Feedback Engine):</strong> Du lieu real-time dung de auto-veto. Nhung gi bi Veto o day se khong duoc vao lenh.<br><strong>Checkpoint snapshot evaluation:</strong> Evaluator kiem tra gia tai thoi diem D1/D3/D7/D14/D30 sau khi signal duoc tao. Day la snapshot evaluation, khong phai full price-path replay.</div></div>';
 }

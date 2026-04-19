@@ -8,6 +8,7 @@ window.SCANNER_REFINEMENT = (() => {
 
   const avg = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
   const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+  const upper = (v) => String(v || '').toUpperCase().trim();
 
   function resistanceLevels(h4, d1, entry) {
     const highs4h = h4.slice(-48).map(x => x.high).sort((a,b) => a-b);
@@ -82,6 +83,35 @@ window.SCANNER_REFINEMENT = (() => {
     const quant = computeQuantStats();
     const riskAdjustedScore = clamp(Math.round(baseScore * (btcContext === 'bull' ? 1.06 : 0.98)), 0, 100);
     return { riskAdjustedScore, edgeScore: 30, rareSignalReady: false, label: quantRiskLabel(riskAdjustedScore, 30) };
+  }
+
+  function deriveExecutionQualityScore(signal = {}) {
+    const rawScannerScore = clamp(Number(signal.rawScannerScore ?? signal.score ?? 0), 0, 100);
+    const riskAdjustedScore = clamp(Number(signal.riskAdjustedScore ?? signal.scoreBreakdown?.riskAdjusted ?? rawScannerScore), 0, 100);
+    const executionConfidence = clamp(Number(signal.executionConfidence ?? signal.confScore ?? 0), 0, 1);
+    const rr = clamp(Number(signal.rr ?? 0), 0, 5);
+    const displayStatus = upper(signal.displayStatus || signal.finalAuthorityStatus || signal.executionTier || signal.status);
+    const authorityDecision = upper(signal.authorityDecision || signal.decision);
+    const trigger = String(signal.entrySignal || '').trim().toLowerCase();
+    const entryTiming = String(signal.entryTiming || '').trim().toLowerCase();
+    const quality = String(signal.chartEntryQuality || '').trim().toLowerCase();
+    const actionable = signal.executionGatePassed === true || ['ALLOW', 'WAIT'].includes(authorityDecision);
+
+    let score = (riskAdjustedScore * 0.52) + (executionConfidence * 18) + (rr * 5.5);
+    if (actionable) {
+      if (displayStatus === 'READY') score += 18;
+      else if (displayStatus === 'PLAYABLE') score += 12;
+      else if (displayStatus === 'PROBE') score += 6;
+    } else if (authorityDecision === 'REJECT') {
+      score -= 8;
+    }
+
+    if (trigger && trigger !== 'wait') score += 4;
+    if (entryTiming && /confirm|retest|break|spring|lps/.test(entryTiming)) score += 2;
+    if (quality === 'entry_good') score += 4;
+    else if (quality === 'entry_late') score -= 6;
+    else if (quality === 'wait_retest') score -= 2;
+    return clamp(Math.round(score), 0, 100);
   }
 
   function getSmartExecutionProfile(btcContext, healthScore, structureLabel = '') {
@@ -162,8 +192,14 @@ window.SCANNER_REFINEMENT = (() => {
 
   function applyPostScanRefinement(results, btcContext, stabilityState) {
     const insight = buildInsight(results, stabilityState);
-    const top3 = results.filter(c => c.status === 'READY').slice(0, 3);
-    return { sorted: results, insight, top3, portfolio: {} };
+    const sorted = [...(Array.isArray(results) ? results : [])].sort((a, b) => {
+      const bScore = Number(b?.riskAdjustedScore ?? b?.rawScannerScore ?? b?.score ?? 0);
+      const aScore = Number(a?.riskAdjustedScore ?? a?.rawScannerScore ?? a?.score ?? 0);
+      if (bScore !== aScore) return bScore - aScore;
+      return Number(b?.rr || 0) - Number(a?.rr || 0);
+    });
+    const top3 = sorted.filter(c => c.status === 'READY').slice(0, 3);
+    return { sorted, insight, top3, portfolio: {} };
   }
 
   function buildInsight(results, stabilityState) {
@@ -187,7 +223,15 @@ window.SCANNER_REFINEMENT = (() => {
   }
 
   function deriveDeployableTop3(coins) {
-    return (coins || []).filter(isFinalDeployableCoin).slice(0, 3);
+    return (coins || [])
+      .filter(isFinalDeployableCoin)
+      .sort((a, b) => {
+        const bScore = Number(b?.rankScore ?? b?.executionQualityScore ?? b?.riskAdjustedScore ?? b?.score ?? 0);
+        const aScore = Number(a?.rankScore ?? a?.executionQualityScore ?? a?.riskAdjustedScore ?? a?.score ?? 0);
+        if (bScore !== aScore) return bScore - aScore;
+        return Number(b?.rr || 0) - Number(a?.rr || 0);
+      })
+      .slice(0, 3);
   }
 
   function mergeAuthorityCoins(scannerCoins, executionRun) {
@@ -226,7 +270,7 @@ window.SCANNER_REFINEMENT = (() => {
         ''
       ).toUpperCase();
 
-      return {
+      const merged = {
         ...coin,
         authorityTier: authority.authorityTier || authSignal.authorityTier || coin.authorityTier || null,
         authorityDecision: authority.authorityDecision || authSignal.authorityDecision || coin.authorityDecision || null,
@@ -236,7 +280,6 @@ window.SCANNER_REFINEMENT = (() => {
           : (Array.isArray(authSignal.authorityBlockers) ? [...authSignal.authorityBlockers] : (coin.authorityBlockers || [])),
         authoritySource: authority.authoritySource || authSignal.authoritySource || coin.authoritySource || null,
         authorityTrace: deepClone(authority.authorityTrace || authSignal.authorityTrace || coin.authorityTrace || null),
-        authTrace: deepClone(authority.authTrace || authSignal.authTrace || coin.authTrace || null),
         displayStatus: displayStatus || coin.displayStatus || null,
         finalAuthorityStatus: authority.finalAuthorityStatus || authSignal.finalAuthorityStatus || displayStatus || coin.finalAuthorityStatus || null,
         executionTier: authority.executionTier || authSignal.executionTier || coin.executionTier,
@@ -246,6 +289,30 @@ window.SCANNER_REFINEMENT = (() => {
         signalState: authority.signalState || authSignal.signalState || coin.signalState || null,
         status: displayStatus || coin.status,
       };
+
+      const rawScannerScore = Number(merged.rawScannerScore ?? merged.score ?? 0);
+      const riskAdjustedScore = Number(merged.riskAdjustedScore ?? merged.scoreBreakdown?.riskAdjusted ?? rawScannerScore);
+      const executionQualityScore = deriveExecutionQualityScore({
+        ...merged,
+        rawScannerScore,
+        riskAdjustedScore,
+      });
+
+      return {
+        ...merged,
+        rawScannerScore,
+        riskAdjustedScore,
+        edgeScore: Number(merged.edgeScore ?? merged.scoreBreakdown?.edge ?? 0),
+        executionQualityScore,
+        rankScore: merged.executionGatePassed ? executionQualityScore : riskAdjustedScore,
+        scoreSemantics: {
+          scanner: 'rawScannerScore',
+          analytics: 'riskAdjustedScore',
+          ranking: 'rankScore',
+          execution: 'executionQualityScore',
+        },
+        authTrace: null,
+      };
     });
   }
 
@@ -254,5 +321,5 @@ window.SCANNER_REFINEMENT = (() => {
     return ST.scanMeta?.quant || { learningMode: 'trained', confidence: 0.7, edgeScore: 50 };
   }
 
-  return { performScanLoop, applyPostScanRefinement, computeSignalLevels, getSmartExecutionProfile, classifyProposedStatus, quantOverlay, getStabilitySnapshot, getSmartRRFloor, deriveDeployableTop3, mergeAuthorityCoins };
+  return { performScanLoop, applyPostScanRefinement, computeSignalLevels, getSmartExecutionProfile, classifyProposedStatus, quantOverlay, getStabilitySnapshot, getSmartRRFloor, deriveDeployableTop3, mergeAuthorityCoins, deriveExecutionQualityScore };
 })();

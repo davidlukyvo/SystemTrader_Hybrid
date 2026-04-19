@@ -10,20 +10,91 @@ window.ANALYTICS_ENGINE = (() => {
 
   const ROLLING_WINDOW_DAYS = 14;
   const ROLLING_WINDOW_MS = ROLLING_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+  const ACTIONABLE_STATUSES = new Set(['READY', 'PLAYABLE', 'PROBE']);
+  const POPULATIONS = Object.freeze({
+    technical: 'technical',
+    execution: 'execution',
+    alert: 'alert',
+    rejected: 'rejected',
+  });
+  const POPULATION_LABELS = Object.freeze({
+    technical: 'Technical candidates',
+    execution: 'Execution-approved candidates',
+    alert: 'Alert-eligible candidates',
+    rejected: 'Rejected candidates',
+  });
 
   // Cache stats so we don't recalculate on every tick
-  let _rollingStatsCache = null;
-  let _lastCalcTime = 0;
+  let _rollingStatsCache = {};
+  let _lastCalcTime = {};
   const CACHE_TTL_MS = 5 * 60 * 1000; // 5 mins
 
   function _num(v, d = 0) { const n = Number(v); return Number.isFinite(n) ? n : d; }
+  function upper(v) { return String(v || '').toUpperCase(); }
+
+  function isBlockedReason(reason) {
+    return /^dedup:/i.test(reason)
+      || /^capital_guard:/i.test(reason)
+      || /^pre_gate_blocked:/i.test(reason)
+      || /^all_tiers_rejected$/i.test(reason)
+      || /^no_execution_result$/i.test(reason);
+  }
+
+  function getSignalTruth(signal) {
+    const displayStatus = upper(signal?.displayStatus || signal?.finalAuthorityStatus || signal?.status);
+    const finalAuthorityStatus = upper(signal?.finalAuthorityStatus || signal?.displayStatus || signal?.status);
+    const authorityDecision = upper(signal?.authorityDecision || signal?.decision);
+    const executionTier = upper(signal?.executionTier || signal?.finalAuthorityStatus || signal?.displayStatus || signal?.status);
+    const authorityReason = String(signal?.authorityReason || signal?.reason || '').trim();
+    const explicitTechnical = signal?.isTechnicalCandidate === true;
+    const explicitExecutionApproved = signal?.isExecutionApproved === true;
+    const explicitAlertEligible = signal?.isAlertEligible === true;
+    const explicitExecutionRejected = signal?.isExecutionRejected === true;
+    const explicitPortfolioBound = signal?.isPortfolioBound === true;
+    const technicalCandidate = explicitTechnical || ACTIONABLE_STATUSES.has(finalAuthorityStatus);
+    const executionApproved = explicitExecutionApproved || (
+      ['ALLOW', 'WAIT'].includes(authorityDecision)
+      && signal?.executionGatePassed === true
+      && signal?.executionActionable === true
+      && ACTIONABLE_STATUSES.has(displayStatus)
+      && executionTier !== 'OBSERVE'
+      && !isBlockedReason(authorityReason)
+    );
+    const alertEligible = explicitAlertEligible || (executionApproved && executionTier !== 'OBSERVE' && !isBlockedReason(authorityReason));
+    const portfolioBound = explicitPortfolioBound
+      || String(signal?.authoritySource || signal?.source || '').toLowerCase() === 'portfolio_binding'
+      || /^position_bound:/i.test(authorityReason);
+    const executionRejected = explicitExecutionRejected || (authorityDecision === 'REJECT') || (!executionApproved && (technicalCandidate || !!authorityReason));
+
+    return {
+      displayStatus,
+      finalAuthorityStatus,
+      authorityDecision,
+      authorityReason,
+      executionTier,
+      isTechnicalCandidate: technicalCandidate,
+      isExecutionApproved: executionApproved,
+      isAlertEligible: alertEligible,
+      isExecutionRejected: executionRejected,
+      isPortfolioBound: portfolioBound,
+    };
+  }
+
+  function shouldUseSignalForPopulation(signal, population = POPULATIONS.execution) {
+    const truth = getSignalTruth(signal);
+    if (truth.isPortfolioBound) return false;
+    if (population === POPULATIONS.technical) return truth.isTechnicalCandidate;
+    if (population === POPULATIONS.alert) return truth.isAlertEligible;
+    if (population === POPULATIONS.rejected) return truth.isExecutionRejected;
+    return truth.isExecutionApproved;
+  }
 
   /**
    * Main computation: Generates 14-day rolling stats for Sector (Category) & Setup
    */
-  async function computeRollingStats(force = false) {
-    if (!force && _rollingStatsCache && (Date.now() - _lastCalcTime) < CACHE_TTL_MS) {
-      return _rollingStatsCache;
+  async function computeRollingStats(force = false, population = POPULATIONS.execution) {
+    if (!force && _rollingStatsCache[population] && (Date.now() - (_lastCalcTime[population] || 0)) < CACHE_TTL_MS) {
+      return _rollingStatsCache[population];
     }
 
     if (!window.DB) return { categories: {}, setups: {}, lastTradeMap: {} };
@@ -36,12 +107,17 @@ window.ANALYTICS_ENGINE = (() => {
       const outcomes = await DB.getOutcomes({});
       const signals = await DB.getSignals({});
       const sigMap = new Map(signals.map(s => [s.id, s]));
+      const setupLabel = (sig) => {
+        if (typeof window.getStructuralSetupLabel === 'function') return window.getStructuralSetupLabel(sig);
+        return String(sig?.setup || sig?.structureTag || 'Unknown');
+      };
 
       // Get outcomes evaluated within the window
       // Or outcomes mapping to signals opened within the window
       const recentOutcomes = outcomes.filter(o => {
         const sig = sigMap.get(o.signalId);
         const sigTs = sig ? _num(sig.timestamp || sig.scannedAt || 0) : 0;
+        if (!sig || !shouldUseSignalForPopulation(sig, population)) return false;
         return (o.evaluatedAt >= cutoff) || (sigTs >= cutoff);
       });
 
@@ -60,7 +136,7 @@ window.ANALYTICS_ENGINE = (() => {
         if (category === 'OTHER' && window.CATEGORY_ENGINE?.getCategory) {
           category = window.CATEGORY_ENGINE.getCategory(sig.symbol) || 'OTHER';
         }
-        const setup = sig.setup || 'Unknown';
+        const setup = setupLabel(sig);
         const verdict = String(o.verdict || '').toLowerCase();
         
         // Track last trade timestamp for Unfreeze logic
@@ -135,31 +211,37 @@ window.ANALYTICS_ENGINE = (() => {
         return res;
       };
 
-      _rollingStatsCache = {
+      _rollingStatsCache[population] = {
         categories: finalize(catStats),
         setups: finalize(setupStats),
         symbols: finalize(symbolStats),
         sources: finalize(sourceStats),
         hours: finalize(hourStats),
         lastTradeMap: lastTradeMap,
+        population,
+        populationLabel: POPULATION_LABELS[population] || POPULATION_LABELS.execution,
         updatedAt: now
       };
-      _lastCalcTime = now;
+      _lastCalcTime[population] = now;
 
-      return _rollingStatsCache;
+      return _rollingStatsCache[population];
     } catch (err) {
       console.error('[ANALYTICS-ENGINE] Rolling stats computation failed:', err);
       return { categories: {}, setups: {}, lastTradeMap: {} };
     }
   }
 
-  function getCachedStats() {
-    return _rollingStatsCache || { categories: {}, setups: {}, lastTradeMap: {} };
+  function getCachedStats(population = POPULATIONS.execution) {
+    return _rollingStatsCache[population] || { categories: {}, setups: {}, lastTradeMap: {}, population };
   }
 
   return {
     computeRollingStats,
     getCachedStats,
+    getSignalTruth,
+    shouldUseSignalForPopulation,
+    POPULATIONS,
+    POPULATION_LABELS,
     ROLLING_WINDOW_DAYS
   };
 })();

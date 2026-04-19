@@ -26,6 +26,7 @@ window.AlertEngine = (() => {
   }
 
   function deriveRejectDisplayStatus(s) {
+    if (typeof window.deriveBlockedActionStatus === 'function') return window.deriveBlockedActionStatus(s);
     const blockers = Array.isArray(s.authorityBlockers) ? s.authorityBlockers.join(' ') : String(s.authorityBlockers || '');
     const reason = String(s.authorityReason || s.reason || '').toLowerCase();
     const search = (blockers + ' ' + reason).toLowerCase();
@@ -39,12 +40,47 @@ window.AlertEngine = (() => {
     return 'WATCH'; // Default for technical rejection
   }
 
+  function getPrimaryActionTruth(signal) {
+    const displayStatus = getSignalDisplayStatus(signal);
+    const authorityDecision = getAuthorityDecision(signal);
+    if (authorityDecision === 'REJECT') return deriveRejectDisplayStatus(signal);
+    return displayStatus || 'WATCH';
+  }
+
+  function isMaintainedSignal(signal) {
+    if (typeof window.isMaintainedSignalState === 'function') return window.isMaintainedSignalState(signal);
+    const source = String(signal?.authoritySource || '').toLowerCase();
+    const reason = String(signal?.authorityReason || signal?.reason || '').toLowerCase();
+    return source === 'portfolio_binding' || /^position_bound:|^dedup:/i.test(reason);
+  }
+
+  function summarizeReason(signal) {
+    if (typeof window.summarizeActionReason === 'function') return window.summarizeActionReason(signal);
+    return String(signal?.authorityReason || signal?.reason || 'No clear authority reason').trim();
+  }
+
+  function shouldShowTradeBlock(signal, statusOverride = '') {
+    const merged = statusOverride ? { ...signal, displayStatus: statusOverride } : signal;
+    if (typeof window.shouldExposeTradeLevels === 'function') return window.shouldExposeTradeLevels(merged);
+    return false;
+  }
+
   function getAuthorityDecision(signal) {
     return String(signal?.authorityDecision || signal?.decision || '').toUpperCase();
   }
 
   function getAuthorityReason(signal) {
     return String(signal?.authorityReason || signal?.reason || '').trim();
+  }
+
+  function getStructuralSetup(signal) {
+    if (typeof window.getStructuralSetupLabel === 'function') return window.getStructuralSetupLabel(signal);
+    return String(signal?.setup || signal?.structureTag || 'Unknown').trim() || 'Unknown';
+  }
+
+  function getEntryTrigger(signal) {
+    if (typeof window.getEntryTriggerLabel === 'function') return window.getEntryTriggerLabel(signal);
+    return String(signal?.entrySignal || signal?.entryTiming || 'wait').trim() || 'wait';
   }
 
   function isExecutionGatePassed(signal) {
@@ -101,16 +137,17 @@ window.AlertEngine = (() => {
 
   function shouldAlert(signal, cfg) {
     if (!signal) return false;
-    const st = getSignalDisplayStatus(signal);
+    const st = getPrimaryActionTruth(signal);
     if (['AVOID', 'REJECTED', 'FETCH_FAIL', 'WATCH'].includes(st)) return false;
     if (!isAuthoritativeAlertCandidate(signal)) return false;
     if (String(signal.fakePumpRisk || '').toLowerCase() === 'high') return false;
+    if (isMaintainedSignal(signal)) return false;
     return !!levelFor(signal, cfg);
   }
 
   function messageFor(signal, cfg, meta = {}) {
     const level = levelFor(signal, cfg);
-    const st = getSignalDisplayStatus(signal);
+    const st = getPrimaryActionTruth(signal);
     const isRisk = ['NO_TRADE', 'FAKE_PUMP_BLOCKED', 'RISK_BLOCKED', 'RISK_BLOCKED_LOW', 'RISK_BLOCKED_MEDIUM', 'RISK_BLOCKED_HIGH'].includes(st);
     const isExec = (signal.authorityDecision || signal.decision || '').toUpperCase().includes('ALLOW') || (signal.authorityDecision || signal.decision || '').toUpperCase().includes('TRADE');
     const isStrong = level === 'READY_STRONG';
@@ -134,29 +171,26 @@ window.AlertEngine = (() => {
     const valuationText = rainbow ? `${rainbow.label} (${strategic.riskMultiplier.toFixed(2)}x)` : 'n/a';
     const rainbowEmoji = strategic?.riskMultiplier > 1 ? '🌈🚀' : strategic?.riskMultiplier < 1 ? '🌈⚠️' : '🌈⚖️';
 
-    const blockers = Array.isArray(signal.authorityBlockers) && signal.authorityBlockers.length ? ` (${signal.authorityBlockers.join('|')})` : '';
-    const decision = (signal.authorityDecision || signal.decision || level || 'MONITOR') + (signal.authorityDecision === 'REJECT' ? blockers : '');
-    const reasoning = signal.authorityReason || signal.reason || 'Technical setup meets alpha-guard criteria.';
-
-    const showTradeBlock = (
-      ['READY', 'PLAYABLE'].includes(st) &&
-      !isRejected &&
-      (
-        (st === 'READY' && Number(signal.executionConfidence || 0) >= 0.80 && Number(signal.rr || 0) >= 2.0) ||
-        (st === 'PLAYABLE' && Number(signal.executionConfidence || 0) >= 0.58 && Number(signal.rr || 0) >= 1.4)
-      ) &&
-      Number(signal.entry || signal.priceAtSignal || 0) > 0 &&
-      Number(signal.stop || 0) > 0 &&
-      Number(signal.tp1 || 0) > 0
-    );
+    const technicalTier = String(signal.finalAuthorityStatus || signal.executionTier || '').toUpperCase();
+    const decision = String(signal.authorityDecision || signal.decision || level || 'MONITOR').toUpperCase();
+    const reasoning = summarizeReason(signal);
+    const showTradeBlock = shouldShowTradeBlock(signal, st);
 
     const lines = [
       `${emoji} <b>${esc(signal.symbol)}</b> — ${esc(st)}`,
       `━━━━━━━━━━━━━━━━━━━━`,
-      `📊 Setup: <b>${esc(signal.setup || 'Unknown')}</b>`,
+      `📊 Setup: <b>${esc(getStructuralSetup(signal))}</b>`,
       `🧭 BTC: <b>${meta.btcContext || 'n/a'}</b> | ${rainbowEmoji} <b>${esc(valuationText)}</b>`,
       `📈 RR: <b>${fmt(signal.rr)}x</b> | Conf: <b>${pct(signal.executionConfidence)}</b>`
     ];
+
+    lines.push(`🎯 Trigger: <b>${esc(getEntryTrigger(signal))}</b>`);
+    if (technicalTier && technicalTier !== st && technicalTier !== 'WATCH') {
+      lines.push(`🧱 Technical Tier: <b>${esc(technicalTier)}</b>`);
+    }
+    if (isMaintainedSignal(signal)) {
+      lines.push(`🔒 State: <b>Maintained / already tracked</b>`);
+    }
 
     if (st === 'PROBE') {
       lines.push(`👁 Watch: <b>${esc(signal.entryTiming || signal.signalEntryTiming || 'confirm trigger')}</b> | Price <code>${fmt(signal.price || signal.entry || signal.priceAtSignal || 0)}</code>`);
@@ -169,8 +203,8 @@ window.AlertEngine = (() => {
     }
 
     lines.push(`━━━━━━━━━━━━━━━━━━━━`);
-    lines.push(`🧠 Reasoning: <i>${esc(reasoning)}</i>`);
-    lines.push(`🏁 <b>Final Decision: ${esc(decision)}</b>`);
+    lines.push(`🧠 Reason: <i>${esc(reasoning)}</i>`);
+    lines.push(`🏁 <b>Decision: ${esc(decision)}</b>`);
     lines.push(``);
     lines.push(`#SystemTrader #PriorityAlert`);
     return lines.join('\n');
@@ -182,7 +216,7 @@ window.AlertEngine = (() => {
       const score = (s) => {
       const rr = Number(s.rr || 0);
       const conf = Number(s.executionConfidence || 0);
-      const st = getSignalDisplayStatus(s);
+      const st = getPrimaryActionTruth(s);
       const decision = String(s.authorityDecision || s.decision || '').toUpperCase();
       let val = (rr * 0.55) + (conf * 5.5);
       if (st === 'READY') val += 9;
@@ -220,7 +254,7 @@ window.AlertEngine = (() => {
     // Mascot logic: Only mascot authorized non-reject signals if possible (v10.6.9.52 Hardening)
     const mascot = ranked.find(s => {
       const decision = (s.authorityDecision || s.decision || '').toUpperCase();
-      const displayStatus = getSignalDisplayStatus(s);
+      const displayStatus = getPrimaryActionTruth(s);
       return !decision.includes('REJECT') && !['WATCH', 'AVOID', 'OBSERVE'].includes(displayStatus);
     }) || ranked[0] || {};
     const mascotSymbol = mascot.symbol || 'N/A';
@@ -239,35 +273,22 @@ window.AlertEngine = (() => {
 
     ranked.forEach((s, idx) => {
       const level = levelFor(s, cfg);
-      let displayStatus = getSignalDisplayStatus(s);
+      let displayStatus = getPrimaryActionTruth(s);
 
       const isRejected = (s.authorityDecision || s.decision || '').toUpperCase().includes('REJECT');
-      // v10.6.9.54/55: Redundant Parity Guard + Policy Mapping
-      if (isRejected && !['WATCH', 'AVOID', 'HOLD', 'REJECTED'].includes(displayStatus)) {
-        displayStatus = deriveRejectDisplayStatus(s);
-      }
       const emoji = isRejected ? '👀' : (idx === 0 ? '🏆' : (level === 'READY_STRONG' ? '🏆' : (level === 'READY' ? '🚨' : (level === 'SCALP' ? '⚡' : '👀'))));
       const visualEmoji = isRejected ? '👀' : (idx === 0 ? '🏆' : (level === 'READY_STRONG' ? '🏆' : (level === 'READY' ? '🚨' : (level === 'PLAYABLE' ? '🔷' : (level === 'SCALP' ? '⚡' : '🟡')))));
 
       const technicalTier = (s.finalAuthorityStatus || level || 'WATCH').toUpperCase();
-      const blockers = Array.isArray(s.authorityBlockers) && s.authorityBlockers.length ? s.authorityBlockers[0] : '';
       let decisionBase = (s.authorityDecision || s.decision || (level || 'MONITOR')).toUpperCase();
-
-      const showTradeBlock = (
-        ['READY', 'PLAYABLE'].includes(displayStatus) &&
-        !isRejected &&
-        (
-          (displayStatus === 'READY' && Number(s.executionConfidence || 0) >= 0.80 && Number(s.rr || 0) >= 2.0) ||
-          (displayStatus === 'PLAYABLE' && Number(s.executionConfidence || 0) >= 0.58 && Number(s.rr || 0) >= 1.4)
-        ) &&
-        Number(s.entry || s.priceAtSignal || 0) > 0 &&
-        Number(s.stop || 0) > 0 &&
-        Number(s.tp1 || 0) > 0
-      );
+      const showTradeBlock = shouldShowTradeBlock(s, displayStatus);
 
       lines.push(`${idx + 1}. ${visualEmoji} <b>${esc(s.symbol)}</b> — ${esc(displayStatus)}`);
       if (technicalTier !== displayStatus && technicalTier !== 'WATCH') {
         lines.push(`   • Technical Tier: <b>${esc(technicalTier)}</b>`);
+      }
+      if (isMaintainedSignal(s)) {
+        lines.push(`   • State: <b>Maintained / already tracked</b>`);
       }
       lines.push(`   • RR: <b>${fmt(s.rr)}x</b> | Conf: <b>${pct(s.executionConfidence)}</b>`);
 
@@ -282,9 +303,7 @@ window.AlertEngine = (() => {
       }
 
       lines.push(`   • Decision: <b>${esc(decisionBase.includes('REJECT') ? 'REJECT' : decisionBase)}</b>`);
-      if (blockers) {
-        lines.push(`   • Reason: <i>${esc(blockers.replace('pre_gate_blocked:', ''))}</i>`);
-      }
+      lines.push(`   • Reason: <i>${esc(summarizeReason(s))}</i>`);
       if (idx < ranked.length - 1) lines.push(``);
     });
 
@@ -336,7 +355,7 @@ window.AlertEngine = (() => {
     });
 
     const filtered = all.filter(s => shouldAlert(s, cfg)).filter(s => {
-      const st = getSignalDisplayStatus(s);
+      const st = getPrimaryActionTruth(s);
       const rr = Number(s?.rr || 0);
       const conf = Number(s?.executionConfidence || 0);
       const setup = String(s?.setup || s?.structureTag || '').toLowerCase();
@@ -355,17 +374,17 @@ window.AlertEngine = (() => {
     });
 
     trace('filtered_candidates', filtered.map(s => ({
-      symbol: s?.symbol,
-      finalAuthorityStatus: getSignalDisplayStatus(s),
-      authorityDecision: String(s?.authorityDecision || s?.decision || '').toUpperCase(),
-      rr: Number(s?.rr || 0),
-      conf: Number(s?.executionConfidence || 0)
+        symbol: s?.symbol,
+        finalAuthorityStatus: getPrimaryActionTruth(s),
+        authorityDecision: String(s?.authorityDecision || s?.decision || '').toUpperCase(),
+        rr: Number(s?.rr || 0),
+        conf: Number(s?.executionConfidence || 0)
     })));
 
     if (!filtered.length) {
       const debug = all.map(s => ({
         symbol: s?.symbol,
-        status: getSignalDisplayStatus(s),
+        status: getPrimaryActionTruth(s),
         authorityDecision: getAuthorityDecision(s),
         executionGatePassed: isExecutionGatePassed(s),
         executionActionable: isExecutionActionable(s),
@@ -373,10 +392,11 @@ window.AlertEngine = (() => {
         rr: Number(s?.rr || 0),
         conf: Number(s?.executionConfidence || 0),
         reason: (() => {
-          const st = getSignalDisplayStatus(s);
+          const st = getPrimaryActionTruth(s);
           if (!['ALLOW', 'WAIT'].includes(getAuthorityDecision(s))) return 'authority_not_actionable';
           if (!isExecutionGatePassed(s)) return 'execution_gate_false';
           if (!isExecutionActionable(s)) return 'execution_not_actionable';
+          if (isMaintainedSignal(s)) return 'maintained_state';
           if (String(s?.executionTier || '').toUpperCase() === 'OBSERVE') return 'observe_tier';
           if (String(s?.fakePumpRisk || '').toLowerCase() === 'high') return 'fake_pump_high';
           if (st === 'PLAYABLE' && !(Number(s?.rr || 0) >= 1.6 && Number(s?.executionConfidence || 0) >= 0.60)) return 'below_playable_rr_conf';
@@ -396,7 +416,7 @@ window.AlertEngine = (() => {
       trace('no_authoritative_alert', {
         filtered: filtered.map(s => ({
           symbol: s?.symbol,
-          finalAuthorityStatus: getSignalDisplayStatus(s),
+          finalAuthorityStatus: getPrimaryActionTruth(s),
           authorityDecision: getAuthorityDecision(s),
           authorityReason: getAuthorityReason(s),
           executionGatePassed: s?.executionGatePassed === true,
@@ -410,22 +430,22 @@ window.AlertEngine = (() => {
     }
 
     const ranked = rankSignals(authoritative, meta).slice(0, 2);
-    const signature = ranked.map(s => `${s.symbol}:${getSignalDisplayStatus(s)}:${Math.round(Number(s.rr || 0) * 10) / 10}`).join('|');
+    const signature = ranked.map(s => `${s.symbol}:${getPrimaryActionTruth(s)}:${Math.round(Number(s.rr || 0) * 10) / 10}`).join('|');
     const top1 = ranked[0];
     const prevTop1 = String((antiSpam.lastSignature || '').split('|')[0] || '');
-    const topChanged = !!top1 && prevTop1 !== `${top1.symbol}:${getSignalDisplayStatus(top1)}:${Math.round(Number(top1.rr || 0) * 10) / 10}`;
+    const topChanged = !!top1 && prevTop1 !== `${top1.symbol}:${getPrimaryActionTruth(top1)}:${Math.round(Number(top1.rr || 0) * 10) / 10}`;
     const isRegimeChange = regime !== String(antiSpam.lastRegime || '').toLowerCase();
 
     let upgradeDetected = false;
     let perSymbolBlocked = 0;
     for (const s of ranked) {
-      const st = getSignalDisplayStatus(s);
+      const actionTruth = getPrimaryActionTruth(s);
       const key = `signal:${s.symbol}`;
       if (window.Telegram.hasSent?.(key, s)) {
         perSymbolBlocked++;
         continue;
       }
-      if (['READY', 'PLAYABLE', 'PROBE'].includes(st)) upgradeDetected = true;
+      if (['READY', 'PLAYABLE', 'PROBE'].includes(actionTruth)) upgradeDetected = true;
     }
 
     const regimeType = String(meta.regimeType || 'CHOP').toUpperCase();
@@ -449,7 +469,7 @@ window.AlertEngine = (() => {
       shouldSend = true;
       reason = 'authority_upgrade';
     } else if (!isDuplicate && !cooldownActive && ranked.some(s => {
-      const st = getSignalDisplayStatus(s);
+      const st = getPrimaryActionTruth(s);
       const rr = Number(s.rr || 0);
       const conf = Number(s.executionConfidence || 0);
       if (st === 'READY') return true;
@@ -462,13 +482,13 @@ window.AlertEngine = (() => {
 
     if (!shouldSend) {
       const suppressReason = cooldownActive ? 'global_cooldown' : (isDuplicate ? 'duplicate_signature' : 'no_material_change');
-      trace('suppressed', { suppressReason, perSymbolBlocked, antiSpam, signature, ranked: ranked.map(s => ({ symbol: s.symbol, st: getSignalDisplayStatus(s), rr: Number(s.rr || 0), conf: Number(s.executionConfidence || 0) })) });
+      trace('suppressed', { suppressReason, perSymbolBlocked, antiSpam, signature, ranked: ranked.map(s => ({ symbol: s.symbol, st: getPrimaryActionTruth(s), rr: Number(s.rr || 0), conf: Number(s.executionConfidence || 0) })) });
       return { sent: 0, skipped: all.length, reason: suppressReason, perSymbolBlocked };
     }
 
     try {
       const summary = summaryMessageFor(ranked, cfg, meta);
-      trace('send_attempt', { reason, signature, ranked: ranked.map(s => ({ symbol: s.symbol, st: getSignalDisplayStatus(s), rr: Number(s.rr || 0), conf: Number(s.executionConfidence || 0) })), summaryPreview: summary.slice(0, 500) });
+      trace('send_attempt', { reason, signature, ranked: ranked.map(s => ({ symbol: s.symbol, st: getPrimaryActionTruth(s), rr: Number(s.rr || 0), conf: Number(s.executionConfidence || 0) })), summaryPreview: summary.slice(0, 500) });
       await window.Telegram.send(summary);
       for (const s of ranked) {
         await window.Telegram.markSent?.(`signal:${s.symbol}`, s);
@@ -477,7 +497,7 @@ window.AlertEngine = (() => {
       antiSpam.lastSignature = signature;
       antiSpam.lastRegime = regime;
       await window.Telegram.updateAntiSpamState?.(antiSpam);
-      const displayStatus = (ranked[0] && window.getExecutionDisplayStatus) ? window.getExecutionDisplayStatus(ranked[0]) : (ranked[0]?.displayStatus || ranked[0]?.finalAuthorityStatus || 'WATCH');
+      const displayStatus = ranked[0] ? getPrimaryActionTruth(ranked[0]) : 'WATCH';
       trace('send_success', { reason, perSymbolBlocked, signature, displayStatus });
       return { sent: 1, skipped: Math.max(0, all.length - ranked.length), reason, perSymbolBlocked, displayStatus };
     } catch (err) {
@@ -487,5 +507,15 @@ window.AlertEngine = (() => {
     }
   }
 
-  return { shouldAlert, processSignals, messageFor, summaryMessageFor, rankSignals };
+  return {
+    shouldAlert,
+    processSignals,
+    messageFor,
+    summaryMessageFor,
+    rankSignals,
+    getPrimaryActionTruth,
+    isMaintainedSignal,
+    summarizeReason,
+    shouldShowTradeBlock
+  };
 })();
