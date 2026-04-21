@@ -159,3 +159,7 @@ When debugging:
 - use `authorityTrace.rejectionsByTier` for rejection reasons
 - use `deployableTop3` for approved shortlist
 - use `runtime-audit.js` for population-level blocker shape
+
+## License
+
+This project is released under the MIT License. See [LICENSE](LICENSE).
