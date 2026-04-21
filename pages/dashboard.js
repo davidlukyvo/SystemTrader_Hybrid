@@ -505,7 +505,7 @@ function renderSignalSummaryBar(counts, capitalRegime) {
         <span class="ssb-count">${counts.watch}</span> WATCH
       </div>
       <div class="ssb-regime" style="color:var(--text-muted); font-size:11px; margin-left:auto">
-        Found: ${counts.total || 0} | Actionable: ${(counts.ready || 0) + (counts.playable || 0) + (counts.probe || 0)} | Top: ${(
+        Scanned: ${counts.total || 0} | Approved: ${(counts.ready || 0) + (counts.playable || 0) + (counts.probe || 0)} | Top: ${(
           Array.isArray(ST.scanMeta?.deployableTop3) ? ST.scanMeta.deployableTop3
           : (Array.isArray(ST.scanMeta?.authoritativeTop3) ? ST.scanMeta.authoritativeTop3 : [])
         ).length}

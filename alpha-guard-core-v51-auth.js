@@ -1626,7 +1626,10 @@ window.EXECUTION_ENGINE_V9 = (() => {
       if (!sizing.valid) { reject(`sizing_failed:${sizing.reason}`); continue; }
 
       // APPROVED
-      const auth = buildAuthorityMeta({ tier, pass: true, reason: gateResult.reason, rejections: [], authorityTrace: finalTrace });
+      const finalPassReason = finalTrace?.promotion?.reason
+        ? `${String(gateResult.reason || 'gate_passed').trim()} -> ${String(finalTrace.promotion.reason).trim()}`
+        : gateResult.reason;
+      const auth = buildAuthorityMeta({ tier, pass: true, reason: finalPassReason, rejections: [], authorityTrace: finalTrace });
 
 
       // v10.6.9.51 Absolute Contract Write-back
@@ -1644,7 +1647,7 @@ window.EXECUTION_ENGINE_V9 = (() => {
       newPositions.push(position);
       results.push({
         symbol, signalState, executionTier: tier, pass: true,
-        reason: gateResult.reason, rejections: [],
+        reason: finalPassReason, rejections: [],
         ...auth,
         authorityTrace: auth.authorityTrace,
         position,

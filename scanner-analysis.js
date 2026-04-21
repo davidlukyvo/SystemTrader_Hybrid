@@ -12,6 +12,13 @@ window.SCANNER_ANALYSIS = (() => {
   const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
   const getCloses = (candles) => candles.map(c => c.close);
   const getVolumes = (candles) => candles.map(c => c.volumeQuote || c.volume || 0);
+  function calcPeriodPumpPct(candles, periods) {
+    if (!Array.isArray(candles) || candles.length <= periods) return 0;
+    const lastClose = safeNum(candles[candles.length - 1]?.close);
+    const priorClose = safeNum(candles[candles.length - 1 - periods]?.close);
+    if (!(lastClose > 0) || !(priorClose > 0)) return 0;
+    return ((lastClose - priorClose) / priorClose) * 100;
+  }
 
   function emaSeries(values, period) {
     const out = new Array(values.length).fill(null);
@@ -323,10 +330,18 @@ window.SCANNER_ANALYSIS = (() => {
     const structuralSetup = typeof window.normalizeStructuralSetupValue === 'function'
       ? window.normalizeStructuralSetupValue(features.structure.label, 'unclear')
       : features.structure.label;
+    const derivedPump7d = calcPeriodPumpPct(d1, 7);
+    const derivedPump30d = calcPeriodPumpPct(d1, 30);
 
     return {
       id: `${coin.base}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
-      symbol: coin.base, name: coin.name || coin.base, price: coin.lastPrice, volume24h: Number(coin.volume24h ?? 0),
+      symbol: coin.base,
+      name: coin.name || coin.base,
+      price: coin.lastPrice,
+      volume24h: Number(coin.volume24h ?? coin.quoteVolume ?? 0),
+      pumpRecent: Number(coin.pumpRecent ?? coin.pump7d ?? derivedPump7d ?? 0),
+      pump7d: Number(coin.pump7d ?? coin.pumpRecent ?? derivedPump7d ?? 0),
+      pump30d: Number(coin.pump30d ?? derivedPump30d ?? 0),
       entry: levels.entry, stop: levels.stop, tp1: levels.tp1, tp2: levels.tp2, tp3: levels.tp3,
       momentumScore: features.momentumScore || 0, momentumPhase: features.momentumPhase || 'NONE', momentumDetected: !!features.momentumDetected,
       rr: levels.rrInfo.rr, rrInfo: levels.rrInfo, status: finalStatus, proposedStatus,

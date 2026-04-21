@@ -120,9 +120,60 @@ window.SCANNER_REFINEMENT = (() => {
     return { readyRRFloor: weakTape ? 1.60 : 1.75, scalpRRFloor: weakTape ? 0.72 : 0.82, confFloor: 0.44 };
   }
 
+  function deriveExecutionConfidence(features, levels, btcContext) {
+    const structureLabel = String(features?.structure?.label || '').toLowerCase();
+    const entrySignal = String(features?.entrySignalMeta?.label || '').toLowerCase();
+    const chartEntryQuality = String(levels?.chartAware?.entryQuality || '').toLowerCase();
+    const fakePumpLabel = String(features?.fake?.label || '').toLowerCase();
+    const relVol = Number(features?.structure?.relVol15 || 0);
+    const rr = Number(levels?.rrInfo?.rr || 0);
+    const structureScore = Number(features?.structure?.score || 0);
+    const entryScore = Number(features?.entryScore || 0);
+    const confirmation1H = features?.confirmation1H || {};
+
+    let confidence = 0.42;
+
+    if (/breakout|trend-continuation|accumulation|phase-candidate|early-phase-d/.test(structureLabel)) confidence += 0.06;
+    else if (/early-watch|unclear/.test(structureLabel)) confidence -= 0.04;
+
+    if (features?.entrySignalMeta?.fullTriggerValid) confidence += 0.12;
+    else if (features?.entrySignalMeta?.trigger15mValid) confidence += 0.07;
+    else if (entrySignal && entrySignal !== 'wait') confidence += 0.04;
+
+    if (chartEntryQuality === 'entry_good') confidence += 0.08;
+    else if (chartEntryQuality === 'wait_retest') confidence -= 0.02;
+    else if (chartEntryQuality === 'entry_late') confidence -= 0.07;
+
+    if (fakePumpLabel === 'high') confidence -= 0.10;
+    else if (fakePumpLabel === 'medium') confidence -= 0.04;
+
+    if (rr >= 2.2) confidence += 0.05;
+    else if (rr >= 1.6) confidence += 0.03;
+    else if (rr < 1.0) confidence -= 0.05;
+
+    if (relVol >= 1.5) confidence += 0.04;
+    else if (relVol < 0.65) confidence -= 0.03;
+
+    if (structureScore >= 8) confidence += 0.03;
+    else if (structureScore <= 3) confidence -= 0.03;
+
+    if (entryScore >= 6) confidence += 0.03;
+    else if (entryScore <= 1) confidence -= 0.02;
+
+    if (confirmation1H?.status === 'supportive') confidence += 0.04;
+    else if (confirmation1H?.status === 'overextended_no_chase') confidence -= 0.03;
+    else if (confirmation1H?.status === 'bearish_blocked') confidence -= 0.08;
+
+    if (btcContext === 'bull') confidence += 0.02;
+    else if (btcContext === 'bear') confidence -= 0.04;
+
+    return Number(clamp(confidence, 0.38, 0.74).toFixed(2));
+  }
+
   function classifyProposedStatus(coin, features, levels, btcContext, smartProfile) {
     const { structure, fake, entrySignalMeta } = features; const { rrInfo } = levels;
     const score = calculateSignalScore(features, levels, btcContext);
+    const executionConfidence = deriveExecutionConfidence(features, levels, btcContext);
     let status = 'watch';
     const phaseWindow = structure.label.includes('phase');
     const readyPass = fake.label !== 'high' && score >= 50 && entrySignalMeta.fullTriggerValid && rrInfo.rr >= 1.2 && phaseWindow;
@@ -138,8 +189,13 @@ window.SCANNER_REFINEMENT = (() => {
     } else {
       status = 'reject';
     }
-    
-    return { proposedStatus: status, score, smartMoneyScore: 0.3, scalpConfidenceBase: 0.5 };
+
+    return {
+      proposedStatus: status,
+      score,
+      smartMoneyScore: 0.3,
+      scalpConfidenceBase: executionConfidence,
+    };
   }
 
   function calculateSignalScore(features, levels, btcContext) {

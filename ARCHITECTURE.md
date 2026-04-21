@@ -1,0 +1,322 @@
+# SystemTrader v10.6.9 - Master Handover
+
+Deep architecture, hardening, and truth-contract reference for the current SystemTrader Hybrid source snapshot.
+
+## Operating Rule
+
+The current code snapshot is the source of truth. If this document conflicts with runtime code, update this document.
+
+Runtime labels may still use `v10.6.9.56-ModerateTelegram`, while the source already includes later `.56+` and `.56++` hardening/tuning layers. Treat version strings as cache/runtime labels, not complete architectural boundaries.
+
+## Active Runtime Architecture
+
+Runtime entry:
+
+- `index.html`: script entry point
+- `app.js`: bootloader, IndexedDB state load, router, scheduler startup
+
+State and UI truth:
+
+- `state-v51-auth.js`: global `ST`, authority display resolver, trade-level exposure helper
+- `pages/dashboard.js`: command center UI
+- `pages/scanner.js`: scanner UI
+- `pages/models.js`: entry model reference UI
+
+Scanner pipeline:
+
+- `live-scanner.js`: orchestration shell
+- `scanner-universe.js`: Binance discovery, liquidity gates, hygiene application
+- `clean-universe.js`: symbol taxonomy, hard/soft exclusions
+- `scanner-analysis.js`: kline fetch, technical features, scoring, RR, confidence, levels, volume/pump fields
+- `scanner-refinement.js`: post-scan refinement, technical shortlist, authority merge, deployable shortlist
+- `scanner-persistence.js`: finalized scan persistence and `ST.scanMeta` sync
+
+Execution authority:
+
+- `alpha-guard-core-v51-auth.js`: final execution gate and authority write-back
+- `capital-engine.js`: sizing, cooldown, daily limit, exposure, strategic cap checks
+- `portfolio-engine.js`: portfolio veto context and lifecycle constraints
+- `execution-sync.js`: display adapter only; not an authority source
+
+Persistence and learning:
+
+- `db.js`: IndexedDB persistence and signal truth normalization
+- `analytics-engine.js`: historical analytics truth
+- `learning-engine.js`: learning dataset builder
+- `outcome-evaluator.js`, `outcome-linker.js`, `outcome-engine.js`: outcome evaluation and linkage
+- `edge-adapter.js`, `pro-edge.js`: edge/ranking adaptation
+
+Alerts and audit:
+
+- `alert-engine.js`: alert filtering, formatting, fail-closed alert truth
+- `telegram.js`: Telegram config, dedup, anti-spam, send layer
+- `runtime-audit.js`: live scan blocker distribution and short summary utility
+
+## Script Load Order
+
+Scripts load synchronously from `index.html`. Do not reorder without checking dependencies.
+
+High-level order:
+
+1. persistence/config: `db.js`, `strategic-engine.js`, `state-v51-auth.js`
+2. taxonomy/data: `clean-universe.js`, `coingecko.js`, `symbol-mapper.js`, `category-engine.js`
+3. analytics/risk: `analytics-engine.js`, `feedback-engine.js`, `risk-engine.js`, `portfolio-engine.js`
+4. market/scanner modules: `binance-market-data.js`, `native-momentum.js`, `scanner-universe.js`, `scanner-analysis.js`, `scanner-refinement.js`, `scanner-persistence.js`, `live-scanner.js`
+5. outcome/learning/ranking: `outcome-evaluator.js`, `learning-engine.js`, `outcome-linker.js`, `edge-adapter.js`, `pro-edge.js`
+6. capital/regime/authority: `capital-flow.js`, `capital-engine.js`, `market-insight.js`, `regime-engine.js`, `outcome-engine.js`, `promotion-engine.js`, `alpha-guard-core-v51-auth.js`
+7. display/alerts/audit: `execution-sync.js`, `telegram.js`, `alert-engine.js`, `runtime-audit.js`
+8. UI pages: `pages/dashboard.js`, `pages/scanner.js`, `pages/scorer.js`, `pages/models.js`, and other page modules
+9. boot: `app.js`
+
+Runtime note: `runtime-audit.js` loads after `alert-engine.js` and before main page consumers.
+
+## Signal Lifecycle
+
+```text
+Binance exchangeInfo + ticker/24hr
+  -> scanner-universe.js
+  -> clean-universe.js
+  -> preFilterCandidates
+  -> scanner-analysis.js
+  -> scanner-refinement.js
+  -> alpha-guard-core-v51-auth.js
+  -> capital-engine.js / portfolio-engine.js
+  -> scanner-refinement.js mergeAuthorityCoins
+  -> scanner-persistence.js
+  -> ST.scanMeta + DB
+  -> dashboard/scanner UI + runtime-audit + learning + Telegram
+```
+
+### Discovery And Hygiene
+
+`scanner-universe.js` uses Binance `exchangeInfo` and `ticker/24hr`.
+
+`clean-universe.js` provides taxonomy:
+
+- hard excludes: stable/USD bases, leveraged tokens, wrapped/staked assets, commodity-backed assets, and other permanently invalid instruments
+- soft excludes: assets that may be undesirable in some regimes but are not always invalid
+
+Current code behavior:
+
+- `scanner-universe.js` skips hard-excluded symbols.
+- In `sideway` context, it also blocks symbols whose `clean-universe.js` reason is `meme_soft_excluded` or `soft_excluded`.
+- Current soft meme examples include `SHIB`, `PEPE`, `BONK`, `WIF`, `FLOKI`, and `PENGU`.
+- This is code-based behavior, not a broad claim that every future meme-like listing is covered.
+
+### Deep Scan
+
+`scanner-analysis.js`:
+
+- fetches `15m`, `1h`, `4h`, and `1d` Binance klines
+- computes structure, volume, fib, EMA, entry quality, fake-pump risk, RR, confidence, levels
+- materializes `volume24h` from Binance `quoteVolume`
+- derives `pump7d` and `pump30d` from daily klines when upstream fields are absent
+
+### Refinement
+
+`scanner-refinement.js`:
+
+- builds scanner-side `proposedStatus`
+- computes technical/ranking context
+- derives `technicalTop3`
+- merges final authority fields back into coins
+- derives `deployableTop3`
+
+`proposedStatus` is not authority. It is scanner-side context only.
+
+## Authority Contract
+
+Canonical fields:
+
+- `displayStatus`: UI action truth
+- `finalAuthorityStatus`: final technical authority tier
+- `authorityDecision`: `ALLOW`, `WAIT`, or `REJECT`
+- `authorityReason`: concise final reason string
+- `authorityBlockers`: structured blocker strings
+- `authorityTrace`: final trace object
+- `executionGatePassed`: true only when final gate passes
+- `executionActionable`: true only for authority-approved actionable tiers
+
+Legacy fields:
+
+- `status`: backward-compatible display/status fallback
+- `authTrace`: legacy only; do not use as runtime truth
+- `authoritativeTop3`: compatibility mirror of `deployableTop3`
+
+### Tier Semantics
+
+- `READY`: strongest approved execution tier
+- `PLAYABLE`: approved execution tier with moderate conviction
+- `PROBE`: monitoring-grade early signal; authority-valid but cautious
+- `WATCH`: not execution-approved
+- `AVOID` / `REJECT`: blocked or invalid
+
+### Top3 Semantics
+
+- `technicalTop3`: scanner technical shortlist only
+- `deployableTop3`: authority-approved shortlist for the current scan
+- `authoritativeTop3`: legacy mirror / compatibility alias
+
+Do not use `technicalTop3` as deploy permission.
+
+## Execution Gate Summary
+
+`alpha-guard-core-v51-auth.js` is the single final execution authority.
+
+Core behavior:
+
+- evaluate pre-gate
+- reject duplicates and open-position conflicts
+- run tier checks for `READY`, `PLAYABLE`, `PROBE`
+- apply adaptive soft unlocks where code allows
+- apply final promotion logic such as `ready_promote_eligible`
+- compute capital plan and sizing
+- reject fail-closed on missing context, invalid sizing, or capital veto
+- write final authority fields back to the signal
+
+Important promotion wording:
+
+- A candidate can pass through `adaptive_unlock:playable` and later be promoted to `READY`.
+- In that case, final reason should preserve the chain, for example:
+  `adaptive_unlock:playable -> ready_promote_eligible`
+
+## Capital And Portfolio Vetoes
+
+Capital and portfolio checks are hard vetoes.
+
+Relevant modules:
+
+- `capital-engine.js`
+- `portfolio-engine.js`
+- `alpha-guard-core-v51-auth.js`
+
+Common blockers:
+
+- `capital_guard:*`
+- `cooldown_active_*`
+- `daily_trade_limit_*`
+- `max_concurrent_*`
+- `total_risk_*_exceeds_strategic_cap_*`
+- `category_cap_reached_*`
+- `dedup:symbol_in_batch_or_portfolio`
+
+If capital context is missing or invalid, the system must reject.
+
+## Telegram Truth
+
+Relevant modules:
+
+- `alert-engine.js`
+- `telegram.js`
+- `state-v51-auth.js`
+
+Rules:
+
+- Alerts must lead with execution truth, not scanner optimism.
+- `WATCH` must not be sent.
+- Blocked reasons such as `dedup:*`, `capital_guard:*`, `pre_gate_blocked:*`, and `all_tiers_rejected` must not leak into alert candidates.
+- `READY` and `PLAYABLE` may show full `Entry / Stop / TP1` when final authority truth allows it.
+- `PROBE` remains monitoring-grade only and should use watch-style formatting.
+
+Trade block exposure requires:
+
+- `displayStatus` is `READY` or `PLAYABLE`
+- `authorityDecision` is not `REJECT`
+- `executionActionable === true` or `executionGatePassed === true`
+- signal is not maintained / position-bound
+- `entry`, `stop`, and `tp1` are valid
+
+## Learning And Persistence
+
+`db.js` normalizes signal truth for persistence and historical repair.
+
+Learning pools:
+
+- `execution`: final execution-approved population
+- `near_approved`: clean near-approved population, often blocked by capital or similar final veto
+- `excluded`: rejected/noisy/unsafe population
+
+Fail-closed learning rule:
+
+- execution learning must not include rejected technical candidates
+- near-approved learning can remain useful without being execution-approved
+- position-bound and legacy records must not reintroduce action truth unless final authority supports it
+
+## Runtime Audit
+
+`runtime-audit.js` summarizes the latest scan.
+
+Console helpers:
+
+```javascript
+RUNTIME_AUDIT.summarizeLatest()
+RUNTIME_AUDIT.printLatest()
+window.__LAST_RUNTIME_AUDIT__
+```
+
+Fields to inspect:
+
+- `meta.sessionStats`
+- `counts`
+- `blockerRanking`
+- `populationMetrics`
+- `filteredCandidates`
+- `executionTrace`
+- `signalCountSource`
+
+Use runtime audit to distinguish:
+
+- code-based assessment: what the code is designed to do
+- verified live runtime fact: what the latest scan actually did
+
+## Hardening History
+
+The current branch includes these hardening outcomes:
+
+- authority persistence cleanup
+- setup/trigger taxonomy separation
+- analytics and learning pool separation
+- score semantics split
+- fail-closed alert semantics
+- validation harness coverage for authority/alert/learning contracts
+- `technicalTop3` vs `deployableTop3` split
+- runtime blocker audit tooling
+- sideway/CHOP soft pre-gate and narrow PROBE bridge tuning
+- Telegram moderate profile for `READY`, `PLAYABLE`, and monitoring-grade `PROBE`
+- scanner/UI wording parity for scanned vs approved counts
+- Binance `quoteVolume` to `volume24h` materialization
+- kline-derived `pump7d` / `pump30d` fallback
+
+## Known Constraints And Gotchas
+
+- Version labels may be compressed; trust code over labels.
+- `proposedStatus` can look optimistic. It is not authority.
+- Existing portfolio positions can remain active even if the current scan produces zero new approved setups.
+- `PROBE` is alert-eligible in specific cases, but it is not full trade-block formatting.
+- `technicalTop3` can be non-empty while `deployableTop3` is empty.
+- Runtime starvation in `sideway / CHOP` can be real market-quality starvation, not necessarily a bug.
+- Avoid tuning thresholds based on one scan. Use repeated runtime-audit patterns.
+
+## Validation Harness
+
+Regression harness files:
+
+- `validation/validation-harness.js`
+- `validation/run-regression-harness.js`
+
+The harness is intended to guard:
+
+- setup/trigger separation
+- rejected technical candidate behavior
+- approved actionable signal behavior
+- near-approved learning pool behavior
+- position-bound display/trade-block behavior
+- capital relax constraints
+- adaptive soft PROBE bridge constraints
+
+## Documentation Map
+
+- `README.md`: project entry and runtime summary
+- `ARCHITECTURE.md`: this deep architecture and contract reference
+- `AI_CONTEXT.md`: short hot-cache / current branch memory for AI agents
+- `docs/system-map.md`: quick visual architecture and debug map

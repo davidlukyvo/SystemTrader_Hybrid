@@ -23,7 +23,7 @@ window.CLEAN_UNIVERSE = (() => {
   ]);
 
   const COMMODITY_BACKED = new Set(['XAUT','PAXG']);
-  const BAD_MEME_SOFT = new Set(['SHIB','PEPE','BONK','WIF']);
+  const BAD_MEME_SOFT = new Set(['SHIB','PEPE','BONK','WIF','FLOKI','PENGU']);
   const SOFT_EXCLUDED = new Set(['1000SATS']);
 
   const EXCLUDED_NAMES = [

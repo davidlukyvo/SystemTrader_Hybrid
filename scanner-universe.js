@@ -166,8 +166,18 @@ window.SCANNER_UNIVERSE = (() => {
       const symbol = s.symbol || '';
       if (!symbol.endsWith('USDT')) continue;
       const universeCheck = window.CLEAN_UNIVERSE?.classify ? window.CLEAN_UNIVERSE.classify({ symbol, baseAsset: base, name: s.baseAsset }) : { excluded: false };
+      const softReason = String(universeCheck.reason || '').toLowerCase();
+      const blockSoftMemeInSideway = btcContext === 'sideway' && (softReason === 'meme_soft_excluded' || softReason === 'soft_excluded');
       if (universeCheck.excluded || isLeveragedToken(base)) continue;
-      tradableMap.set(symbol, { symbol, base, quote: 'USDT', cleanUniverseReason: universeCheck.reason || '' });
+      if (blockSoftMemeInSideway) continue;
+      tradableMap.set(symbol, {
+        symbol,
+        base,
+        quote: 'USDT',
+        cleanUniverseReason: universeCheck.reason || '',
+        cleanUniverseLane: universeCheck.lane || 'allow',
+        cleanUniverseSoftExcluded: universeCheck.softExcluded === true,
+      });
     }
     const out = [];
     for (const t of tickers || []) {
@@ -182,7 +192,16 @@ window.SCANNER_UNIVERSE = (() => {
       if (quoteVolume < minQuoteVolume || quoteVolume > maxQuoteVolume || trades < minTrades || lastPrice <= minPrice || Math.abs(chg24) > maxAbs24hPump) continue;
       const intradayRangePct = lowPrice > 0 ? ((highPrice - lowPrice) / lowPrice) * 100 : 0;
       if (!passesUpperLiquidityGate({ quoteVolume, trades, intradayRangePct, chg24, btcContext })) continue;
-      out.push({ ...row, quoteVolume, baseVolume: safeNum(t.volume), trades, lastPrice, priceChangePercent24h: chg24, intradayRangePct });
+      out.push({
+        ...row,
+        quoteVolume,
+        volume24h: quoteVolume,
+        baseVolume: safeNum(t.volume),
+        trades,
+        lastPrice,
+        priceChangePercent24h: chg24,
+        intradayRangePct
+      });
     }
     return out.sort((a, b) => b.quoteVolume - a.quoteVolume);
   }

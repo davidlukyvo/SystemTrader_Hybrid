@@ -813,10 +813,6 @@ function shouldExposeTradeLevels(coin, opts = {}) {
   const status = getExecutionDisplayStatus(coin);
   const decision = String(coin.authorityDecision || coin.decision || '').toUpperCase();
   const actionable = coin.executionActionable === true || coin.executionGatePassed === true;
-  const conf = Number(coin.executionConfidence || coin.confScore || 0);
-  const rr = Number(coin.rr || 0);
-  const minConf = Number(opts.minConf ?? (status === 'READY' ? 0.80 : 0.58));
-  const minRR = Number(opts.minRR ?? (status === 'READY' ? 2.0 : 1.4));
   const entry = Number(coin.entry || coin.price || 0);
   const stop = Number(coin.stop || 0);
   const tp1 = Number(coin.tp1 || 0);
@@ -824,7 +820,6 @@ function shouldExposeTradeLevels(coin, opts = {}) {
   if (decision === 'REJECT') return false;
   if (!actionable) return false;
   if (isMaintainedSignalState(coin)) return false;
-  if (!(conf >= minConf && rr >= minRR)) return false;
   if (!(entry > 0 && stop > 0 && stop < entry && tp1 > 0)) return false;
   return true;
 }

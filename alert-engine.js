@@ -197,9 +197,9 @@ window.AlertEngine = (() => {
     }
 
     if (showTradeBlock) {
-      lines.push(`🎯 Entry: <code>${fmt(signal.entry || signal.priceAtSignal)}</code>`);
+      lines.push(`🔹 Entry: <code>${fmt(signal.entry || signal.priceAtSignal)}</code>`);
       lines.push(`🛑 Stop: <code>${fmt(signal.stop)}</code>`);
-      lines.push(`💰 TP1: <code>${fmt(signal.tp1)}</code>`);
+      lines.push(`🟢 TP1: <code>${fmt(signal.tp1)}</code>`);
     }
 
     lines.push(`━━━━━━━━━━━━━━━━━━━━`);
@@ -297,9 +297,9 @@ window.AlertEngine = (() => {
       }
 
       if (showTradeBlock) {
-        lines.push(`   • Entry: <code>${fmt(s.entry || s.priceAtSignal)}</code>`);
-        lines.push(`   • Stop: <code>${fmt(s.stop)}</code>`);
-        lines.push(`   • TP1: <code>${fmt(s.tp1)}</code>`);
+        lines.push(`   • 🔹 Entry: <code>${fmt(s.entry || s.priceAtSignal)}</code>`);
+        lines.push(`   • 🛑 Stop: <code>${fmt(s.stop)}</code>`);
+        lines.push(`   • 🟢 TP1: <code>${fmt(s.tp1)}</code>`);
       }
 
       lines.push(`   • Decision: <b>${esc(decisionBase.includes('REJECT') ? 'REJECT' : decisionBase)}</b>`);

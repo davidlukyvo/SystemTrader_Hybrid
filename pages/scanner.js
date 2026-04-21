@@ -398,7 +398,7 @@ function renderScanner() {
                 : (scanFetchStatus === 'error') ? 'var(--red)' 
                 : 'var(--text-muted)';
     const text = scanFetchStatus === 'loading' ? '&#x23F3; Scanning...'
-                : scanFetchStatus === 'done' ? `&#x2705; Found: ${total} | Actionable: ${actionable} | Top: ${topCount}${cooldownText}`
+                : scanFetchStatus === 'done' ? `&#x2705; Scanned: ${total} | Approved: ${actionable} | Top: ${topCount}${cooldownText}`
                 : scanFetchStatus === 'error' ? `&#x26A0; Error${cooldownText}`
                 : `&#x2B24; Ready${cooldownText}`;
     return { color, text };

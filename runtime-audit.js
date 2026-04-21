@@ -25,6 +25,20 @@ window.RUNTIME_AUDIT = (() => {
   function getSignalsFromTrace(trace) {
     const processStart = trace?.process_start;
     if (Array.isArray(processStart?.signals)) return processStart.signals;
+    const noMeaningful = trace?.no_meaningful_alert;
+    if (Array.isArray(noMeaningful?.debug)) {
+      return noMeaningful.debug.map((row) => ({
+        symbol: row?.symbol,
+        rr: row?.rr,
+        conf: row?.conf,
+        blockers: row?.reason ? [String(row.reason)] : [],
+        finalAuthorityStatus: row?.status,
+        authorityDecision: row?.authorityDecision,
+        executionTier: row?.executionTier,
+        executionGatePassed: row?.executionGatePassed,
+        executionActionable: row?.executionActionable,
+      }));
+    }
     return [];
   }
 
@@ -147,6 +161,12 @@ window.RUNTIME_AUDIT = (() => {
       parts.push(`- Latest trace: ${exec.symbol} -> ${exec.reason || 'n/a'} | rr ${toNum(exec.signal?.rr).toFixed(2)} | score ${toNum(exec.signal?.score)} | conf ${toNum(exec.signal?.conf).toFixed(2)} | setup ${String(exec.signal?.setup || 'n/a')}`);
     }
 
+    if (!counts.total) {
+      parts.push('- Read: aggregate blocker counts are unavailable for this snapshot; rely on executionTrace and raw console traces for diagnosis.');
+      parts.push('- Decision: do not infer dominant blocker from this summary alone.');
+      return parts.join('\n');
+    }
+
     const capital = counts.capital_blocked || 0;
     const preGate = counts.pre_gate_blocked || 0;
     const gateQuality = counts.gate_quality_blocked || 0;
@@ -180,6 +200,7 @@ window.RUNTIME_AUDIT = (() => {
       updatedAt: alertTraceEngine?.updatedAt || alertTrace?.at || Date.now(),
       meta: processStart.meta || alertTrace?.meta || {},
       antiSpam: processStart.antiSpam || noMeaningful?.antiSpam || {},
+      signalCountSource: signals.length ? (Array.isArray(processStart?.signals) ? 'process_start.signals' : 'no_meaningful_alert.debug') : 'none',
       counts: signalSummary.counts,
       blockerRanking: signalSummary.blockerRanking,
       populationMetrics: signalSummary.metrics,
