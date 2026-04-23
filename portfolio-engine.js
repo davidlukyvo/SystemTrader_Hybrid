@@ -9,7 +9,9 @@
 window.PORTFOLIO_ENGINE = (() => {
   'use strict';
 
-  // Strict Alpha Guard Portfolio limits
+  // Strict Alpha Guard portfolio limits.
+  // `coolingMs` is same-symbol post-close cooling, not the global trade cadence
+  // cooldown enforced by capital-engine.js.
   const LIMITS = Object.freeze({
     bull:    { maxTotalRiskPct: 0.08, maxConcurrent: 6, coolingMs: 2 * 60 * 60 * 1000, maxPerCategory: 2 },
     sideway: { maxTotalRiskPct: 0.05, maxConcurrent: 4, coolingMs: 4 * 60 * 60 * 1000, maxPerCategory: 1 },
@@ -65,12 +67,12 @@ window.PORTFOLIO_ENGINE = (() => {
       rejections.push(`total_risk_${_pct(totalRisk + floor.riskPctPerTrade, 1)}pct_exceeds_strategic_cap_${_pct(adjustedMaxRiskPct, 1)}pct (Mult: ${strategicMultiplier}x)`);
     }
 
-    // ── Veto 4: Cooling Period (Recent Loss Prevention)
-    const cooling = (ctx.recentClosedPositions || []).filter(p =>
+    // ── Veto 4: Same-symbol cooling period (recent loss/re-entry prevention)
+    const sameSymbolCooling = (ctx.recentClosedPositions || []).filter(p =>
       String(p.symbol || '').toUpperCase() === symbol &&
       (_now() - _num(p.closedAt)) < limits.coolingMs
     );
-    if (cooling.length > 0) {
+    if (sameSymbolCooling.length > 0) {
       rejections.push(`cooling_period_active_${symbol}`);
     }
 

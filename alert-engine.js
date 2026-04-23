@@ -307,12 +307,6 @@ window.AlertEngine = (() => {
       if (idx < ranked.length - 1) lines.push(``);
     });
 
-    lines.push(`━━━━━━━━━━━━━━━━━━━━`);
-    lines.push(`⏱ <b>Session Snapshot</b>`);
-    lines.push(`• Assets Scanned: <b>${stats.scanned}</b>`);
-    lines.push(`• Risk Blocks: <b>${stats.blocked}</b>`);
-    lines.push(`• Active Setups: <b>${stats.active}</b>`);
-    lines.push(``);
     lines.push(`#SystemTrader #ScannerReport`);
     return lines.join('\n');
   }

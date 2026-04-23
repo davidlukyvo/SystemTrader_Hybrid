@@ -9,6 +9,8 @@ window.CAPITAL_ENGINE = (() => {
   'use strict';
 
   const VERSION = 'v9.8.0';
+  // `cooldownMs` is the global trade cadence guard. Same-symbol post-close
+  // cooling lives in portfolio-engine.js as `coolingMs`.
   const REGIME_PROFILES = Object.freeze({
     bull:    { riskMultiplier: 1.35, cooldownMs: 2 * 60 * 60 * 1000, maxTradesPerDay: 3, hardExposureCapPct: 0.08 },
     sideway: { riskMultiplier: 0.80, cooldownMs: 90 * 60 * 1000, maxTradesPerDay: 3, hardExposureCapPct: 0.05 },

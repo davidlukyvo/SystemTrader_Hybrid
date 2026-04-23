@@ -56,7 +56,7 @@ function sanitizeJournal(value) {
 }
 
 function sanitizeScanMeta(value) {
-  const base = { lastScan: null, lastScanId: '', lastScanTs: 0, source: '', coins: [], top3: [], technicalTop3: [], deployableTop3: [], authoritativeTop3: [], authoritativeTop3Legacy: false, cache: {}, regime: {}, insight: {}, scheduler: { enabled: false, hours: ['06:00', '07:00', '08:00', '09:00', '10:30', '17:00', '21:00', '23:00', '00:00'], lastAutoRunAt: 0, lastAutoRunHourKey: '' }, lastScanSource: '', lastScanTrigger: '' };
+  const base = { lastScan: null, lastScanId: '', lastScanTs: 0, source: '', coins: [], top3: [], technicalTop3: [], deployableTop3: [], authoritativeTop3: [], authoritativeTop3Legacy: false, cache: {}, regime: {}, insight: {}, scheduler: { enabled: false, hours: ['06:00', '07:00', '08:00', '09:00', '10:30', '14:30', '17:00', '21:00', '23:00', '00:00'], lastAutoRunAt: 0, lastAutoRunHourKey: '' }, lastScanSource: '', lastScanTrigger: '' };
   if (!value || typeof value !== 'object' || Array.isArray(value)) return base;
   return {
     ...base,
@@ -75,7 +75,7 @@ function sanitizeScanMeta(value) {
     cache: value.cache && typeof value.cache === 'object' && !Array.isArray(value.cache) ? value.cache : {},
     regime: value.regime && typeof value.regime === 'object' && !Array.isArray(value.regime) ? value.regime : {},
     insight: value.insight && typeof value.insight === 'object' && !Array.isArray(value.insight) ? value.insight : {},
-    scheduler: value.scheduler && typeof value.scheduler === 'object' && !Array.isArray(value.scheduler) ? { enabled: !!value.scheduler.enabled, hours: sanitizeSchedulerHours(value.scheduler.hours), lastAutoRunAt: Number(value.scheduler.lastAutoRunAt || 0), lastAutoRunHourKey: String(value.scheduler.lastAutoRunHourKey || '') } : { enabled: false, hours: ['06:00', '07:00', '08:00', '09:00', '10:30', '17:00', '21:00', '23:00', '00:00'], lastAutoRunAt: 0, lastAutoRunHourKey: '' },
+    scheduler: value.scheduler && typeof value.scheduler === 'object' && !Array.isArray(value.scheduler) ? { enabled: !!value.scheduler.enabled, hours: sanitizeSchedulerHours(value.scheduler.hours), lastAutoRunAt: Number(value.scheduler.lastAutoRunAt || 0), lastAutoRunHourKey: String(value.scheduler.lastAutoRunHourKey || '') } : { enabled: false, hours: ['06:00', '07:00', '08:00', '09:00', '10:30', '14:30', '17:00', '21:00', '23:00', '00:00'], lastAutoRunAt: 0, lastAutoRunHourKey: '' },
     lastScanSource: String(value.lastScanSource || ''),
     lastScanTrigger: String(value.lastScanTrigger || '')
   };
@@ -90,7 +90,7 @@ window.ST = {
   strategic: null, // v10.6.9 Strategic Hub (Rainbow + Sentiment + Dom)
   watchlist: { best: [], watch: [], avoid: [] },
   journal: [],
-  scanMeta: { lastScan: null, source: '', top3: [], technicalTop3: [], deployableTop3: [], cache: {}, regime: {}, insight: {}, scheduler: { enabled: false, hours: ['06:00', '07:00', '08:00', '09:00', '10:30', '17:00', '21:00', '23:00', '00:00'], lastAutoRunAt: 0, lastAutoRunHourKey: '' }, lastScanSource: '', lastScanTrigger: '' },
+  scanMeta: { lastScan: null, source: '', top3: [], technicalTop3: [], deployableTop3: [], cache: {}, regime: {}, insight: {}, scheduler: { enabled: false, hours: ['06:00', '07:00', '08:00', '09:00', '10:30', '14:30', '17:00', '21:00', '23:00', '00:00'], lastAutoRunAt: 0, lastAutoRunHourKey: '' }, lastScanSource: '', lastScanTrigger: '' },
 
   /* v10.6.9.26: Hardening Configuration — non-rigid, configurable gates */
   config: {
@@ -812,7 +812,9 @@ function shouldExposeTradeLevels(coin, opts = {}) {
   if (!coin || typeof coin !== 'object') return false;
   const status = getExecutionDisplayStatus(coin);
   const decision = String(coin.authorityDecision || coin.decision || '').toUpperCase();
-  const actionable = coin.executionActionable === true || coin.executionGatePassed === true;
+  const actionable = coin.executionActionable === true
+    || coin.executionGatePassed === true
+    || (['ALLOW', 'WAIT'].includes(decision) && ['READY', 'PLAYABLE'].includes(status));
   const entry = Number(coin.entry || coin.price || 0);
   const stop = Number(coin.stop || 0);
   const tp1 = Number(coin.tp1 || 0);

@@ -197,7 +197,14 @@ function __dashCounts(coins, execSummary, scanMeta = {}) {
     }
     if (status === 'WATCH' || status === 'EARLY') counts.watch++;
   });
-  if (locked && deployableTop3.length) {
+  if (deployableTop3.length) {
+    // deployableTop3 is the current authority-approved shortlist. Prefer it over
+    // older executionBreakdown snapshots so dashboard counters cannot say 0
+    // while rendering approved Top setups.
+    counts.ready = deployableTop3.filter(coin => getExecutionDisplayStatus(coin) === 'READY').length;
+    counts.playable = deployableTop3.filter(coin => getExecutionDisplayStatus(coin) === 'PLAYABLE').length;
+    counts.probe = deployableTop3.filter(coin => getExecutionDisplayStatus(coin) === 'PROBE').length;
+  } else if (locked) {
     counts.ready = locked.ready;
     counts.playable = locked.playable;
     counts.probe = locked.probe;
@@ -528,7 +535,18 @@ function renderTopSetups(topSetups, btcContext) {
     let decisionCode = 'SKIP';
     let decisionClass = 'skip';
     const multiplier = ST?.strategic?.riskMultiplier ?? 1.0;
-    if (!c.rejectReason) {
+    const authorityDecision = String(c.authorityDecision || c.decision || '').toUpperCase();
+    const gatePassed = c.executionGatePassed === true;
+    if (authorityDecision === 'ALLOW' && gatePassed) {
+      decisionCode = 'ALLOW';
+      decisionClass = 'trade';
+    } else if (authorityDecision === 'WAIT') {
+      decisionCode = 'WAIT';
+      decisionClass = 'wait';
+    } else if (authorityDecision === 'REJECT') {
+      decisionCode = 'REJECT';
+      decisionClass = 'skip';
+    } else if (!c.rejectReason) {
       if (st === 'READY') {
         if (multiplier < 0.5) { decisionCode = 'RESTRICT'; decisionClass = 'wait'; }
         else { decisionCode = 'TRADE'; decisionClass = 'trade'; }

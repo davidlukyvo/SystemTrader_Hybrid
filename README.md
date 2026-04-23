@@ -33,8 +33,8 @@ Primary runtime modules:
 - `scanner-refinement.js`: post-scan refinement, authority merge, Top3 shaping
 - `scanner-persistence.js`: final scan persistence and `ST.scanMeta` sync
 - `alpha-guard-core-v51-auth.js`: final execution authority
-- `capital-engine.js`: sizing, cooldown, daily limit, risk-cap checks
-- `portfolio-engine.js`: portfolio veto context and lifecycle constraints
+- `capital-engine.js`: sizing, global trade cadence cooldown, daily limit, risk-cap checks
+- `portfolio-engine.js`: portfolio veto context, exposure caps, dedup, same-symbol post-close cooling
 - `db.js`: IndexedDB persistence and signal truth normalization
 - `alert-engine.js`: fail-closed Telegram alert truth and formatting
 - `telegram.js`: Telegram config, dedup, anti-spam, send layer
@@ -66,7 +66,7 @@ Do not infer tradability from scanner-only fields such as `proposedStatus`, `sco
 4. `scanner-analysis.js` fetches klines and computes structure, trigger, RR, confidence, levels, volume, and pump fields.
 5. `scanner-refinement.js` ranks candidates, builds technical shortlist context, and prepares authority input.
 6. `alpha-guard-core-v51-auth.js` runs the final execution gate.
-7. `capital-engine.js` and `portfolio-engine.js` apply capital, exposure, cooldown, dedup, and risk vetoes.
+7. `capital-engine.js` and `portfolio-engine.js` apply capital, exposure, global cooldown, same-symbol cooling, dedup, and risk vetoes.
 8. `scanner-refinement.js` merges authority truth back into each coin.
 9. `scanner-persistence.js` saves the scan and patches `ST.scanMeta`.
 10. `pages/dashboard.js`, `pages/scanner.js`, `alert-engine.js`, and `runtime-audit.js` consume final truth.
@@ -77,7 +77,9 @@ Authority:
 
 - `alpha-guard-core-v51-auth.js` is the final execution authority.
 - The gate evaluates `READY`, `PLAYABLE`, and `PROBE` tiers and rejects everything else fail-closed.
-- Portfolio, capital, dedup, cooldown, and daily limit checks are vetoes, not suggestions.
+- Portfolio, capital, dedup, cooldown/cooling, and daily limit checks are vetoes, not suggestions.
+- `capital-engine.js` owns global trade cadence cooldown such as `cooldown_active_90m`.
+- `portfolio-engine.js` owns same-symbol post-close cooling such as `cooling_period_active_SYMBOL`.
 
 Persistence:
 
@@ -143,14 +145,18 @@ Useful when a scan shows zero approved setups:
 - check `executionTrace`
 - compare `technicalTop3` against `deployableTop3`
 
-## How To Read This Repo
-
-Start here:
+## Reading Order
 
 1. `README.md`: entry point and runtime summary
 2. `docs/system-map.md`: quick visual architecture map
 3. `AI_CONTEXT.md`: short current-branch hot cache for AI agents
 4. `ARCHITECTURE.md`: deep architecture, hardening history, contracts, constraints
+5. `GOVERNANCE.md`: operating rules and contribution guardrails
+6. `validation/README.md`: validation harness only
+
+Historical patch notes live under `docs/archive/`. Treat them as background only; current source code wins when history conflicts with runtime.
+
+## How To Debug This Repo
 
 When debugging:
 

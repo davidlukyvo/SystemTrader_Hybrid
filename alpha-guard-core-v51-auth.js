@@ -209,6 +209,9 @@ window.EXECUTION_ENGINE_V9 = (() => {
 
   /* ── Portfolio Limits ───────────────────────────────────────────────── */
 
+  // Portfolio limits mirrored for summary/debug exposure.
+  // `coolingMs` means same-symbol post-close cooling; capital-engine.js owns
+  // global trade cadence via `cooldownMs`.
   const PORTFOLIO_LIMITS = Object.freeze({
     bull: { maxTotalRiskPct: 0.08, maxConcurrent: 6, coolingMs: 2 * 60 * 60 * 1000, maxPerCategory: 2 },
     sideway: { maxTotalRiskPct: 0.05, maxConcurrent: 4, coolingMs: 4 * 60 * 60 * 1000, maxPerCategory: 1 },

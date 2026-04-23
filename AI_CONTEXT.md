@@ -1,6 +1,27 @@
 # AI_CONTEXT.md - SystemTrader Hot Cache
 
-This is the short current-branch memory file. Keep it tactical. For deep architecture and hardening history, use `ARCHITECTURE.md`. For a quick visual map, use `docs/system-map.md`.
+This is the short current-branch memory file for AI agents. Keep it tactical. For deep architecture and hardening history, use `ARCHITECTURE.md`. For a quick visual map, use `docs/system-map.md`.
+
+There is no separate `project-brain` doc set by design. This file is the AI memory layer to avoid documentation sprawl.
+
+## Reading Order
+
+1. `README.md`: repo entry and runtime summary
+2. `docs/system-map.md`: fast visual map
+3. `AI_CONTEXT.md`: current AI hot cache
+4. `ARCHITECTURE.md`: deep reference when changing architecture or contracts
+5. `GOVERNANCE.md`: operating and contribution rules
+6. `validation/README.md`: validation harness only
+7. `docs/archive/*`: historical context only
+
+## Read First
+
+- Current source code is the source of truth.
+- Trust active runtime paths before old markdown, old chat history, or stale version labels.
+- Do not infer active behavior from names alone.
+- Do not retune thresholds from one snapshot.
+- Separate hard contracts, policy notes, assessments, and legacy notes.
+- When unsure, inspect the active call path first.
 
 ## Project Status
 
@@ -18,6 +39,14 @@ This is the short current-branch memory file. Keep it tactical. For deep archite
   - `READY`: strongest approved tier
   - `PLAYABLE`: approved execution tier with moderate conviction
   - `PROBE`: monitoring-grade early signal
+
+## Alpha Guard Caution
+
+- `alpha-guard-core-v51-auth.js` is a policy-dense execution authority layer with narrow adaptive and regime-specific branches.
+- Do not retune, simplify, merge, or remove adaptive unlock lanes, ready-promotion chains, regime RR/score/conf floors, or small exception carve-outs without tracing the active runtime call path first.
+- Treat small policy branches as intentional by default until a code-path audit plus runtime evidence shows they are stale, unreachable, or harmful.
+- When auditing a signal, include `btcContext`, `regimeType`, authority tier checks, capital / portfolio vetoes, `authorityTrace`, and `authorityTrace.rejectionsByTier`.
+- Do not infer active behavior from constant names or local helper fragments alone; verify the final executed lane.
 
 ## Short Glossary
 
@@ -39,6 +68,9 @@ This is the short current-branch memory file. Keep it tactical. For deep archite
 - Deployable shortlist: `deployableTop3`
 - Runtime audit helper: `RUNTIME_AUDIT.summarizeLatest()`
 - Detailed module map belongs in `README.md` and `ARCHITECTURE.md`
+- `capital-engine.js` `cooldownMs` = global trade cadence guard.
+- `portfolio-engine.js` `coolingMs` = same-symbol post-close cooling guard.
+- `docs/archive/` is historical patch context only, not active runtime truth.
 
 ## Telegram Truth
 

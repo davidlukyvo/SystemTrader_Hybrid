@@ -46,7 +46,7 @@ flowchart TD
     F --> G[Deep scan and scoring]
     G --> H[Refinement and technical shortlist]
     H --> I[Alpha Guard authority run]
-    I --> J[Capital and portfolio veto]
+    I --> J[Capital global cooldown and portfolio same-symbol cooling]
     J --> K[Merge authority truth]
     K --> L[Derive deployableTop3]
     L --> M[Persist scan and patch scanMeta]
@@ -100,6 +100,7 @@ For one coin:
 5. Inspect `authorityTrace.rejectionsByTier`.
 6. Check `executionGatePassed` and `executionActionable`.
 7. Check whether it appears in `deployableTop3`.
+8. Distinguish `cooldown_active_*` from capital cadence and `cooling_period_active_*` from same-symbol portfolio cooling.
 
 For a whole scan:
 

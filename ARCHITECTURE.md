@@ -194,11 +194,18 @@ Common blockers:
 
 - `capital_guard:*`
 - `cooldown_active_*`
+- `cooling_period_active_*`
 - `daily_trade_limit_*`
 - `max_concurrent_*`
 - `total_risk_*_exceeds_strategic_cap_*`
 - `category_cap_reached_*`
 - `dedup:symbol_in_batch_or_portfolio`
+
+Cooldown terminology:
+
+- `capital-engine.js` uses `cooldownMs` for global trade cadence. In sideway, this is currently 90 minutes.
+- `portfolio-engine.js` uses `coolingMs` for same-symbol post-close cooling. In sideway, this is currently 4 hours.
+- These are intentionally separate veto semantics unless runtime tuning explicitly changes policy.
 
 If capital context is missing or invalid, the system must reject.
 
@@ -320,3 +327,4 @@ The harness is intended to guard:
 - `ARCHITECTURE.md`: this deep architecture and contract reference
 - `AI_CONTEXT.md`: short hot-cache / current branch memory for AI agents
 - `docs/system-map.md`: quick visual architecture and debug map
+- `docs/archive/`: historical patch notes only; do not treat as current runtime truth
