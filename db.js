@@ -213,8 +213,9 @@ window.DB = (() => {
     const breakdown = row.executionBreakdown && typeof row.executionBreakdown === 'object' ? row.executionBreakdown : {};
     const explicitQualified = Number(row.executionQualifiedCount ?? row.qualifiedCount ?? breakdown.ready ?? breakdown.execution ?? breakdown.actionable ?? 0);
     const inferredQualified = Math.max(0, explicitQualified);
-    row.qualifiedCount = inferredQualified;
-    row.executionQualifiedCount = inferredQualified;
+    row.qualifiedCount = inferredQualified;          // deprecated alias — always === executionQualifiedCount; READY-tier qualified count only
+    row.executionQualifiedCount = inferredQualified;  // READY-tier qualified count only (does NOT include PLAYABLE/PROBE gate-passed coins)
+
     row.executionBreakdown = {
       ready: Number(breakdown.ready ?? breakdown.execution ?? inferredQualified ?? 0),
       execution: Number(breakdown.execution ?? breakdown.ready ?? inferredQualified ?? 0),
@@ -228,6 +229,13 @@ window.DB = (() => {
     }
     if (!row.insight || typeof row.insight !== 'object') row.insight = {};
     row.insight.qualifiedCount = inferredQualified;
+    // P1-A: Era partition tag — legacy scans lack executionBreakdown.ready at write time
+    if (!row.schemaVersion) {
+      const src = String(row.source || '');
+      row.schemaVersion = (src.includes('V10') || src.includes('v10') || (row.executionBreakdown && typeof row.executionBreakdown === 'object' && 'ready' in row.executionBreakdown && row.deployableTop3 !== undefined))
+        ? 'v10'
+        : 'legacy';
+    }
     return row;
   }
 
@@ -487,8 +495,10 @@ window.DB = (() => {
         if (sig.symbol) bucket.symbols.push(sig.symbol);
       } else if (semantic === 'PLAYABLE') {
         bucket.playable += 1;
+        bucket.actionable += 1;
       } else if (semantic === 'PROBE') {
         bucket.probe += 1;
+        bucket.actionable += 1;
       } else if (semantic === 'AVOID') {
         bucket.rejected += 1;
       }
@@ -654,6 +664,11 @@ window.DB = (() => {
     row.learningPool = learningProfile.learningPool;
     row.learningClassification = learningProfile.learningClassification;
     if (!Array.isArray(row.outcomesEvaluated)) row.outcomesEvaluated = [];
+    // P1-A: Era partition tag — v10.6.9 contract requires authorityDecision + finalAuthorityStatus
+    if (!row.schemaVersion) {
+      const hasContract = !!(row.authorityDecision && row.finalAuthorityStatus);
+      row.schemaVersion = (hasContract || String(row.id || '').startsWith('sig-')) ? 'v10' : 'legacy';
+    }
     return row;
   }
 
@@ -882,13 +897,17 @@ window.DB = (() => {
   /* ── Export / Import ──────────────────────────────────── */
 
   async function exportAll() {
-    const [scans, signals, trades, outcomes, settings] = await Promise.all([
+    const [rawScans, rawSignals, trades, outcomes, settings] = await Promise.all([
       getAllRecords(STORES.scans),
       getAllRecords(STORES.signals),
       getAllRecords(STORES.trades),
       getAllRecords(STORES.outcomes),
       getAllRecords(STORES.settings),
     ]);
+    // P1-C: Normalize signals and scans before export so learningPool, schemaVersion,
+    // and authority fields reflect derived truth — not raw stored values from legacy era.
+    const signals = rawSignals.map(normalizeSignalRecord);
+    const scans = rawScans.map(normalizeScanRecord);
     return {
       version: 'ST_V8_IDB',
       exportedAt: Date.now(),
@@ -926,7 +945,7 @@ window.DB = (() => {
         execution: Number(summary.execution || summary.ready || 0),
         playable: Number(summary.playable || 0),
         probe: Number(summary.probe || 0),
-        actionable: Number(summary.ready || summary.execution || 0),
+        actionable: Number(summary.actionable || 0),
         rejected: Number(summary.rejected || 0)
       };
       scan.rejectedCount = Math.max(Number(scan.rejectedCount || 0), Number(summary.rejected || 0));
@@ -973,7 +992,7 @@ window.DB = (() => {
         execution: Number(summary.execution || summary.ready || 0),
         playable: Number(summary.playable || 0),
         probe: Number(summary.probe || 0),
-        actionable: Number(summary.ready || summary.execution || 0),
+        actionable: Number(summary.actionable || 0),
         rejected: Number(summary.rejected || 0),
       };
       scan.rejectedCount = Number(summary.rejected || 0);

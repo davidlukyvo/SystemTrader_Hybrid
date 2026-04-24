@@ -46,17 +46,18 @@ Primary runtime modules:
 
 Use these fields consistently across code and docs:
 
+- `top3`: legacy READY-only shortlist kept for compatibility
 - `displayStatus`: UI action truth
 - `finalAuthorityStatus`: final technical authority tier
 - `authorityDecision`: `ALLOW`, `WAIT`, or `REJECT`
 - `authorityReason`: concise final reason string
 - `authorityTrace`: final trace object
-- `technicalTop3`: technical shortlist only
-- `deployableTop3`: authority-approved shortlist for the current scan
+- `technicalTop3`: technical shortlist only; fully meaningful when an explicit technical shortlist is passed
+- `deployableTop3`: runtime authority-approved shortlist for the current scan
 - `authoritativeTop3`: legacy compatibility mirror of `deployableTop3`
 - `learningPool`: `execution`, `near_approved`, or `excluded`
 
-Do not infer tradability from scanner-only fields such as `proposedStatus`, `score`, or `technicalTop3`.
+Do not infer tradability from scanner-only fields such as `proposedStatus`, `score`, `top3`, or `technicalTop3`.
 
 ## Scan Pipeline
 

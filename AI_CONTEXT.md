@@ -50,12 +50,13 @@ There is no separate `project-brain` doc set by design. This file is the AI memo
 
 ## Short Glossary
 
+- `top3`: legacy READY-only shortlist kept for compatibility
 - `displayStatus`: UI action truth
 - `finalAuthorityStatus`: final technical authority tier
 - `authorityDecision`: `ALLOW`, `WAIT`, or `REJECT`
 - `authorityTrace`: final trace object
-- `technicalTop3`: technical shortlist only
-- `deployableTop3`: authority-approved shortlist
+- `technicalTop3`: technical shortlist only; fully meaningful when an explicit technical shortlist is passed
+- `deployableTop3`: runtime authority-approved shortlist
 - `authoritativeTop3`: legacy mirror of `deployableTop3`
 - `learningPool`: `execution`, `near_approved`, or `excluded`
 - Alpha Guard: `alpha-guard-core-v51-auth.js`, the final execution authority
@@ -66,10 +67,13 @@ There is no separate `project-brain` doc set by design. This file is the AI memo
 - UI/action truth resolver: `state-v51-auth.js`
 - Scanner shell: `live-scanner.js`
 - Deployable shortlist: `deployableTop3`
+- `top3` should be treated as legacy READY-only scanner context, not as alert or actionable truth.
+- `technicalTop3` falls back to legacy `top3` if no explicit technical shortlist is passed; this fallback can be misleading on actionable-no-ready scans.
 - Runtime audit helper: `RUNTIME_AUDIT.summarizeLatest()`
 - Detailed module map belongs in `README.md` and `ARCHITECTURE.md`
 - `capital-engine.js` `cooldownMs` = global trade cadence guard.
 - `portfolio-engine.js` `coolingMs` = same-symbol post-close cooling guard.
+- Future market-data work should learn provider/session/cache patterns, not make unofficial TradingView sockets part of core authority.
 - `docs/archive/` is historical patch context only, not active runtime truth.
 
 ## Telegram Truth

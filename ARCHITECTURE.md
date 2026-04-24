@@ -65,7 +65,7 @@ High-level order:
 5. outcome/learning/ranking: `outcome-evaluator.js`, `learning-engine.js`, `outcome-linker.js`, `edge-adapter.js`, `pro-edge.js`
 6. capital/regime/authority: `capital-flow.js`, `capital-engine.js`, `market-insight.js`, `regime-engine.js`, `outcome-engine.js`, `promotion-engine.js`, `alpha-guard-core-v51-auth.js`
 7. display/alerts/audit: `execution-sync.js`, `telegram.js`, `alert-engine.js`, `runtime-audit.js`
-8. UI pages: `pages/dashboard.js`, `pages/scanner.js`, `pages/scorer.js`, `pages/models.js`, and other page modules
+8. UI pages: `pages/dashboard.js`, `pages/scanner.js`, `pages/scorer.js`, `pages/models.js`, `pages/analytics.js`, and other page modules
 9. boot: `app.js`
 
 Runtime note: `runtime-audit.js` loads after `alert-engine.js` and before main page consumers.
@@ -153,11 +153,12 @@ Legacy fields:
 
 ### Top3 Semantics
 
-- `technicalTop3`: scanner technical shortlist only
-- `deployableTop3`: authority-approved shortlist for the current scan
-- `authoritativeTop3`: legacy mirror / compatibility alias
+- `top3`: legacy READY-only shortlist kept for compatibility
+- `technicalTop3`: scanner technical shortlist only; fully meaningful when explicitly passed
+- `deployableTop3`: runtime authority-approved shortlist for the current scan
+- `authoritativeTop3`: legacy mirror / compatibility alias of `deployableTop3`
 
-Do not use `technicalTop3` as deploy permission.
+Do not use `top3` or `technicalTop3` as deploy permission.
 
 ## Execution Gate Summary
 
@@ -294,6 +295,30 @@ The current branch includes these hardening outcomes:
 - Binance `quoteVolume` to `volume24h` materialization
 - kline-derived `pump7d` / `pump30d` fallback
 
+## Future Direction: Market Data Provider Layer
+
+Current runtime reads Binance spot market data directly from scanner modules. A future hardening direction is to introduce a narrow market-data provider layer so scanner logic asks for normalized market data without caring which upstream source produced it.
+
+Preferred provider direction:
+
+- primary: Binance official/public API
+- secondary: BingX official/public API, if added
+- fallback: cached data and metadata sources such as CoinGecko where appropriate
+- experimental: TradingView-style adapter only for manual research, disabled by default
+
+The provider contract should normalize at least:
+
+- `symbol`
+- `interval`
+- OHLCV candles
+- `ticker.price`
+- `ticker.volume24h`
+- `source`
+- `fetchedAt`
+- `quality`
+
+Important boundary: do not copy unofficial TradingView socket behavior into core execution logic. The useful lesson is the adapter/session/cache pattern, not depending on private or unofficial endpoints for authority decisions.
+
 ## Known Constraints And Gotchas
 
 - Version labels may be compressed; trust code over labels.
@@ -303,6 +328,39 @@ The current branch includes these hardening outcomes:
 - `technicalTop3` can be non-empty while `deployableTop3` is empty.
 - Runtime starvation in `sideway / CHOP` can be real market-quality starvation, not necessarily a bug.
 - Avoid tuning thresholds based on one scan. Use repeated runtime-audit patterns.
+- `scanMeta.portfolio.active` counts active capital allocation slots from `CAPITAL_FLOW`, not open DB positions. When `capitalRegime` is `OBSERVE` and `allocations` is empty, this value is `0` even if real positions are open in the DB. Use `DB.getPositions()` filtered by `OPEN_STATES` (`ARMED`, `PENDING`, `ACTIVE`, `PARTIAL_EXIT`) for the true open position count. The execution gate always reads from this DB path and is not affected by this display value.
+
+## Scan Truth Fields Contract
+
+Four fields on persisted scan records describe qualification counts. They have **intentionally different scopes** — do not treat them as equivalent.
+
+| Field | Exact Meaning | Scope | Source |
+|---|---|---|---|
+| `top3` | Legacy scanner-side shortlist filtered to `status === 'READY'`. Kept for compatibility only. | READY only | `scanner-refinement.js` |
+| `technicalTop3` | Technical shortlist before final authority / capital suppression when explicitly passed. If not passed, it currently falls back to legacy `top3`, which can be misleading on actionable-no-ready scans. | Intended technical shortlist | `scanner-persistence.js` |
+| `deployableTop3` | **Deployable shortlist across READY / PLAYABLE / PROBE** (up to 3 coins) | READY + PLAYABLE + PROBE | `scanner-refinement.js → isFinalDeployableCoin` |
+| `executionQualifiedCount` | **READY-tier qualified count only** — how many coins reached the strictest authority tier | READY only | `scanner-persistence.js (eb_ready)` |
+| `qualifiedCount` | Deprecated alias for `executionQualifiedCount`. Always identical. Do not read separately. | READY only | `db.js normalizeScanRecord` |
+| `qualifiedCoins` | Array of READY-tier coin symbols (strings, not objects) | READY only | `scanner-persistence.js (eb_ready filter)` |
+| `executionBreakdown.ready` | READY-tier count — same value as `executionQualifiedCount` | READY only | `scanner-persistence.js` |
+| `executionBreakdown.actionable` | **Gate-passed actionable count across READY + PLAYABLE + PROBE lanes** = eb.ready + eb.playable + eb.probe | READY + PLAYABLE + PROBE | `scanner-persistence.js` |
+| `scanTruthBasis` | Debug / explanatory label for the scan state. **Not an authority source.** Values: `execution_qualified` / `actionable_no_ready` / `technical_qualified_capital_suppressed` / `no_actionable` | — | `scanner-persistence.js` |
+
+### Invariant
+
+```
+eb.actionable >= executionQualifiedCount (always)
+eb.actionable == len(deployableTop3 candidates before .slice(0,3))
+```
+
+A scan with `deployableTop3=[SEI(PLAYABLE), AVAX(PROBE)]` and `executionQualifiedCount=0` is **not a mismatch**:
+- `eb.actionable = 2` — gate-passed actionable count across READY/PLAYABLE/PROBE lanes
+- `executionQualifiedCount = 0` — READY-tier qualified count (neither coin reached READY)
+- `scanTruthBasis = 'actionable_no_ready'` documents this state (debug only, not authority)
+- `top3 = []` in the same scan only means the legacy READY-only shortlist is empty
+
+`executionQualifiedCount` is tracked as a future rename candidate to `readyTierCount` for colloquial clarity — out of scope for current patches.
+
 
 ## Validation Harness
 

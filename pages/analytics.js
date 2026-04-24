@@ -265,6 +265,13 @@ async function renderAnalytics() {
       '<div class="stat-card stat-yellow"><div class="stat-label">Scans</div><div class="stat-value">' + (stats.scans || 0) + '</div><div class="stat-note">Scan history</div></div>' +
       '<div class="stat-card stat-purple"><div class="stat-label">Trades</div><div class="stat-value">' + (stats.trades || 0) + '</div><div class="stat-note">Journal entries</div></div>' +
     '</div>' +
+    '<!-- P1-B: Population selector row -->' +
+    '<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center;padding:10px 14px;background:rgba(255,255,255,0.03);border-radius:8px;border:1px solid rgba(255,255,255,0.07)">' +
+      '<span class="text-xs text-muted" style="margin-right:2px">Population:</span>' +
+      '<button class="btn btn-xs ' + (analyticsPopulation === 'execution' ? 'btn-primary' : 'btn-outline') + '" onclick="switchAnalyticsPopulation(\'execution\')">Execution-approved</button>' +
+      '<button class="btn btn-xs ' + (analyticsPopulation === 'technical' ? 'btn-primary' : 'btn-outline') + '" onclick="switchAnalyticsPopulation(\'technical\')">Technical</button>' +
+      '<button class="btn btn-xs ' + (analyticsPopulation === 'v10_only' ? 'btn-primary' : 'btn-outline') + '" onclick="switchAnalyticsPopulation(\'v10_only\')" title="v10 era filter (heuristic) + execution-approved logic. Excludes legacy-era signals identified by missing sig-* ID prefix or absent authority contract fields. schemaVersion tagging is v1 heuristic — treat results as indicative, not certified.">🔬 v10 Era + Exec</button>' +
+    '</div>' +
     '<div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;align-items:center">' +
       '<button class="btn btn-sm ' + (analyticsView === 'setup' ? 'btn-primary' : 'btn-outline') + '" onclick="switchAnalyticsView(\'setup\')">📐 Setup</button>' +
       '<button class="btn btn-sm ' + (analyticsView === 'category' ? 'btn-primary' : 'btn-outline') + '" onclick="switchAnalyticsView(\'category\')">🔖 Category</button>' +
@@ -279,7 +286,8 @@ async function renderAnalytics() {
     '</div>' +
     renderTruthBasisCard() +
     '<div id="analyticsContent">' + viewContent + '</div>' +
-    '<div class="card mt-20" style="border-color:rgba(0,229,255,.2)"><div class="card-title">💡 Cach doc Analytics</div><div class="text-sm text-muted" style="line-height:1.7"><strong>14d Heatmap (Feedback Engine):</strong> Du lieu real-time dung de auto-veto. Nhung gi bi Veto o day se khong duoc vao lenh.<br><strong>Checkpoint snapshot evaluation:</strong> Evaluator kiem tra gia tai thoi diem D1/D3/D7/D14/D30 sau khi signal duoc tao. Day la snapshot evaluation, khong phai full price-path replay.</div></div>';
+    '<div class="card mt-20" style="border-color:rgba(0,229,255,.2)"><div class="card-title">💡 Cach doc Analytics</div><div class="text-sm text-muted" style="line-height:1.7"><strong>14d Heatmap (Feedback Engine):</strong> Du lieu real-time dung de auto-veto. Nhung gi bi Veto o day se khong duoc vao lenh.<br><strong>Checkpoint snapshot evaluation:</strong> Evaluator kiem tra gia tai thoi diem D1/D3/D7/D14/D30 sau khi signal duoc tao. Day la snapshot evaluation, khong phai full price-path replay.<br><strong>🔬 v10 Era + Exec:</strong> Loc era (heuristic v1, dua vao sig-* ID prefix va contract fields) ROI do execution-approved. Era filter la v1 nen treat ket qua la indicative, khong phai certified. scanTruthBasis (no_actionable / execution_qualified / technical_qualified_capital_suppressed) la debug field — khong phai nguon authority moi, chi giai thich trang thai cua scan.</div></div>';
+
 }
 
 function switchAnalyticsView(view) {
@@ -311,6 +319,15 @@ async function refreshOutcomesManual() {
 }
 
 async function reloadAnalytics() {
+  analyticsData = null;
+  await loadAnalyticsData();
+  renderAnalytics();
+}
+
+// P1-B: Population switcher — reload analytics with new era/population context
+async function switchAnalyticsPopulation(pop) {
+  if (analyticsPopulation === pop) return;
+  analyticsPopulation = pop;
   analyticsData = null;
   await loadAnalyticsData();
   renderAnalytics();

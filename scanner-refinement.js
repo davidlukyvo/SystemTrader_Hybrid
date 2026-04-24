@@ -254,6 +254,8 @@ window.SCANNER_REFINEMENT = (() => {
       if (bScore !== aScore) return bScore - aScore;
       return Number(b?.rr || 0) - Number(a?.rr || 0);
     });
+    // Legacy compatibility shortlist: scanner-side READY-only view.
+    // Alerts and actionable UI should prefer deployableTop3 after final authority.
     const top3 = sorted.filter(c => c.status === 'READY').slice(0, 3);
     return { sorted, insight, top3, portfolio: {} };
   }

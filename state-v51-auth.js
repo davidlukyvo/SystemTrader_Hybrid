@@ -366,8 +366,9 @@ window.ST = {
     if (!patch || typeof patch !== 'object') return;
     const nextPatch = { ...patch };
     if (Object.prototype.hasOwnProperty.call(nextPatch, 'deployableTop3') && !Object.prototype.hasOwnProperty.call(nextPatch, 'authoritativeTop3')) {
+      // authoritativeTop3 mirrors deployableTop3 for legacy consumers.
       nextPatch.authoritativeTop3 = nextPatch.deployableTop3;
-      nextPatch.authoritativeTop3Legacy = true;
+      nextPatch.authoritativeTop3Legacy = !(Array.isArray(nextPatch.deployableTop3) && nextPatch.deployableTop3.length);
     }
     if (Object.prototype.hasOwnProperty.call(nextPatch, 'lastScan') && !Object.prototype.hasOwnProperty.call(nextPatch, 'lastScanTs')) {
       nextPatch.lastScanTs = nextPatch.lastScan;

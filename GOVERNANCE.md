@@ -16,6 +16,7 @@ Safe changes:
 - persistence integrity fixes
 - validation harness coverage
 - refactors that do not change runtime behavior
+- scheduler default scan time slots: adding or removing hours in the `scheduler.hours` default array does not affect authority logic, gate floors, or execution decisions
 
 ## Approval Required
 

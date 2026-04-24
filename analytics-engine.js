@@ -16,13 +16,18 @@ window.ANALYTICS_ENGINE = (() => {
     execution: 'execution',
     alert: 'alert',
     rejected: 'rejected',
+    v10_only: 'v10_only',  // P1-B: current-era-only (sig-* IDs, schemaVersion=v10)
   });
   const POPULATION_LABELS = Object.freeze({
     technical: 'Technical candidates',
     execution: 'Execution-approved candidates',
     alert: 'Alert-eligible candidates',
     rejected: 'Rejected candidates',
+    // Caution 2: name matches actual behavior = era filter THEN execution-approved logic
+    // Caution 1: schemaVersion tag is heuristic v1, not guaranteed perfect classification
+    v10_only: 'v10 era + execution-approved (heuristic era filter, sig-* IDs)',
   });
+
 
   // Cache stats so we don't recalculate on every tick
   let _rollingStatsCache = {};
@@ -83,6 +88,14 @@ window.ANALYTICS_ENGINE = (() => {
   function shouldUseSignalForPopulation(signal, population = POPULATIONS.execution) {
     const truth = getSignalTruth(signal);
     if (truth.isPortfolioBound) return false;
+    // P1-B: v10_only — filter to current-era signals only, then apply execution logic
+    if (population === POPULATIONS.v10_only) {
+      const isV10Era = signal?.schemaVersion === 'v10'
+        || String(signal?.id || '').startsWith('sig-')
+        || !!(signal?.authorityDecision && signal?.finalAuthorityStatus);
+      if (!isV10Era) return false;
+      return truth.isExecutionApproved;
+    }
     if (population === POPULATIONS.technical) return truth.isTechnicalCandidate;
     if (population === POPULATIONS.alert) return truth.isAlertEligible;
     if (population === POPULATIONS.rejected) return truth.isExecutionRejected;

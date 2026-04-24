@@ -38,7 +38,7 @@ async function renderScanHistory() {
     bucket.total += 1;
     if(ds === 'READY'){ bucket.ready += 1; bucket.execution += 1; bucket.actionable += 1; }
     else if(ds === 'PLAYABLE'){ bucket.playable += 1; bucket.actionable += 1; }
-    else if(ds === 'PROBE'){ bucket.probe += 1; }
+    else if(ds === 'PROBE'){ bucket.probe += 1; bucket.actionable += 1; }
     else if(['REJECTED','AVOID'].includes(ds)) bucket.rejected += 1;
     scanCounts.set(key, bucket);
   });
@@ -152,7 +152,37 @@ function renderScanRow(scan, scanCounts) {
   var healthLabel = (scan.insight && scan.insight.marketHealth) || 'weak';
   var healthCls = healthLabel === 'healthy' ? 'badge-green' : healthLabel === 'thin' ? 'badge-yellow' : 'badge-red';
   var isExpanded = scanHistoryExpanded === scan.id;
-  var derived = (scanCounts && scanCounts.get(scan.id)) || { actionable: Number(scan.executionBreakdown?.actionable ?? ((Number(scan.executionBreakdown?.ready || 0) + Number(scan.executionBreakdown?.playable || 0)))), ready: Number(scan.executionBreakdown?.ready ?? scan.executionBreakdown?.execution ?? scan.executionQualifiedCount ?? scan.qualifiedCount ?? 0), execution: Number(scan.executionBreakdown?.execution ?? scan.executionBreakdown?.ready ?? scan.executionQualifiedCount ?? scan.qualifiedCount ?? 0), playable: Number(scan.executionBreakdown?.playable || 0), probe: Number(scan.executionBreakdown?.probe || 0), rejected: Number(scan.rejectedCount || 0), total: 0 };
+  var derived = (scanCounts && scanCounts.get(scan.id)) || { actionable: Number(scan.executionBreakdown?.actionable ?? ((Number(scan.executionBreakdown?.ready || 0) + Number(scan.executionBreakdown?.playable || 0) + Number(scan.executionBreakdown?.probe || 0)))), ready: Number(scan.executionBreakdown?.ready ?? scan.executionBreakdown?.execution ?? scan.executionQualifiedCount ?? scan.qualifiedCount ?? 0), execution: Number(scan.executionBreakdown?.execution ?? scan.executionBreakdown?.ready ?? scan.executionQualifiedCount ?? scan.qualifiedCount ?? 0), playable: Number(scan.executionBreakdown?.playable || 0), probe: Number(scan.executionBreakdown?.probe || 0), rejected: Number(scan.rejectedCount || 0), total: 0 };
+
+  // Patch A: Semantic clarity — explicit field naming:
+  //   eb.actionable         = gate-passed actionable count across READY + PLAYABLE + PROBE lanes
+  //                           (same scope as deployableTop3 shortlist)
+  //   executionQualifiedCount = READY-tier qualified count only (strictest lane)
+  //   deployableTop3          = deployable shortlist across READY/PLAYABLE/PROBE (up to 3 coins)
+  // A scan can have eb.actionable=2 and executionQualifiedCount=0 — this is correct:
+  //   it means 2 coins passed all gates but none reached READY tier.
+  var actionable = derived.actionable || 0;
+  var readyCount = derived.ready || derived.execution || 0;  // = executionQualifiedCount (READY-tier only)
+  var playableCount = derived.playable || 0;
+  var probeCount = derived.probe || 0;
+  var rejectedCount = derived.rejected || scan.rejectedCount || 0;
+
+  // R = executionQualifiedCount (READY-tier qualified count)
+  // P = PLAYABLE gate-passed count  |  Pr = PROBE gate-passed count
+  var tierBreakdown = (readyCount || playableCount || probeCount)
+    ? '<span class="badge badge-gray" style="font-size:10px" title="R = executionQualifiedCount (READY-tier qualified count) · P = PLAYABLE gate-passed · Pr = PROBE gate-passed">R' + readyCount + '·P' + playableCount + '·Pr' + probeCount + '</span>'
+    : '';
+
+  // scanTruthBasis debug badge — explains why eqc=0 when deployableTop3 has coins
+  var basisBadgeHtml = '';
+  if (scan.scanTruthBasis && scan.scanTruthBasis !== 'no_actionable') {
+    var basisLabel = scan.scanTruthBasis === 'technical_qualified_capital_suppressed'
+      ? '<span class="badge badge-yellow" style="font-size:9px" title="Alpha Guard found READY signals but capital/regime suppression blocked deployment">⚡ capital-suppressed</span>'
+      : scan.scanTruthBasis === 'execution_qualified'
+        ? '<span class="badge badge-green" style="font-size:9px">exec-qualified</span>'
+        : '<span class="badge badge-gray" style="font-size:9px">' + scan.scanTruthBasis + '</span>';
+    basisBadgeHtml = basisLabel;
+  }
 
   var healthBlock = '';
   if (scan.insight && scan.insight.marketHealthScore !== undefined) {
@@ -163,9 +193,17 @@ function renderScanRow(scan, scanCounts) {
   return '<div style="padding:14px;border-radius:10px;background:var(--bg-hover);border:1px solid var(--border);margin-bottom:8px;cursor:pointer;transition:border-color .2s" onclick="toggleScanDetail(\'' + scan.id + '\')">' +
     '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">' +
       '<div><div class="fw-700" style="font-size:14px">' + ts + '</div><div class="text-xs text-muted" style="margin-top:4px">' + (regimeEmoji[scan.btcContext] || '?') + ' ' + (scan.btcContext || 'unknown') + ' · Universe ' + (scan.universeCount || 0) + ' · Candidates ' + (scan.candidateCount || 0) + ' · ' + (scan.runtimeSeconds || 0) + 's</div></div>' +
-      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="badge badge-green">' + (derived.actionable || 0) + ' actionable</span><span class="badge badge-red">' + (derived.rejected || scan.rejectedCount || 0) + ' rejected</span>' + ((derived.ready || derived.playable || derived.probe) ? '<span class="badge badge-gray" style="font-size:10px">R ' + (derived.ready || derived.execution || 0) + ' · P ' + (derived.playable || 0) + ' · Pr ' + (derived.probe || 0) + '</span>' : '') + '<span class="badge badge-gray" style="font-size:10px">' + (scan.source || 'unknown') + '</span><span style="font-size:14px">' + (isExpanded ? '▲' : '▼') + '</span></div>' +
+      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
+        '<span class="badge badge-green" title="eb.actionable = gate-passed actionable count across READY + PLAYABLE + PROBE lanes (same scope as deployableTop3 deployable shortlist). Does NOT equal executionQualifiedCount which is READY-tier only.">' + actionable + ' actionable</span>' +
+        '<span class="badge badge-red">' + rejectedCount + ' rejected</span>' +
+        tierBreakdown +
+        basisBadgeHtml +
+        '<span class="badge badge-gray" style="font-size:10px">' + (scan.source || 'unknown') + '</span>' +
+        '<span style="font-size:14px">' + (isExpanded ? '▲' : '▼') + '</span>' +
+      '</div>' +
     '</div>' + healthBlock +
   '</div>';
+
 }
 
 async function toggleScanDetail(scanId) {
