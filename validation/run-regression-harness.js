@@ -96,6 +96,7 @@ async function main() {
   loadScript(context, 'db.js');
   loadScript(context, 'outcome-evaluator.js');
   loadScript(context, 'alpha-guard-core-v51-auth.js');
+  loadScript(context, 'runtime-audit.js');
   loadScript(context, path.join('validation', 'validation-harness.js'));
 
   const harness = context.VALIDATION_HARNESS;

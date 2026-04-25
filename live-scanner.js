@@ -87,11 +87,12 @@ window.LIVE_SCANNER = (() => {
       const contractSummary = runContractAudit(authorityCoins);
       window.__LAST_SCAN_CONTRACT_SUMMARY__ = contractSummary;
 
+      const technicalTop3 = (Array.isArray(sorted) ? sorted : []).slice(0, 3);
       const deployableTop3 = window.SCANNER_REFINEMENT.deriveDeployableTop3(authorityCoins);
       const finalizedAt = Date.now();
       
       const sessionContext = {
-        btcContext, insight, top3, deployableTop3, portfolio, 
+        btcContext, insight, top3, technicalTop3, deployableTop3, portfolio, 
         startedAt, 
         finalizedAt,
         durationMs: finalizedAt - startedAt,

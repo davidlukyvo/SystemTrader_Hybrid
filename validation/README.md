@@ -31,6 +31,7 @@ If `node` is not on `PATH`, use the full Node executable path.
 - capital-first behavior
 - sideway/CHOP loss-streak relaxation remaining narrow
 - soft PROBE bridge behavior remaining narrow
+- runtime audit blocker semantics
 
 ## Terms Used By The Harness
 
@@ -42,6 +43,9 @@ If `node` is not on `PATH`, use the full Node executable path.
 - `deployableTop3`: authority-approved shortlist
 - `authoritativeTop3`: legacy mirror / compatibility alias
 - `learningPool`: `execution`, `near_approved`, or `excluded`
+- `primaryBlockers`: one canonical blocker per signal for readable audit summaries
+- `rawBlockers`: raw multi-reason blocker trace for deep debugging
+- `blockerRanking`: compatibility alias of `primaryBlockers`
 
 ## Expected Healthy Result
 

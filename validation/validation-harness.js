@@ -265,6 +265,7 @@
     assert(typeof root.getCanonicalStructuralSetups === 'function', 'missing_setup_taxonomy', 'Canonical setup taxonomy helper is unavailable');
     assert(typeof root.CAPITAL_ENGINE?.computePlan === 'function', 'missing_capital_engine', 'CAPITAL_ENGINE.computePlan is unavailable');
     assert(typeof root.EXECUTION_ENGINE_V9?.getAdaptiveSoftTier === 'function', 'missing_soft_probe_helper', 'EXECUTION_ENGINE_V9.getAdaptiveSoftTier is unavailable');
+    assert(typeof root.RUNTIME_AUDIT?.summarizeLatest === 'function', 'missing_runtime_audit', 'RUNTIME_AUDIT.summarizeLatest is unavailable');
 
     const downgradedStatus = root.getExecutionDisplayStatus(fixtures.displayDowngraded);
     assert(downgradedStatus === 'WATCH', 'display_truth_leak', 'Display truth leak re-promoted a downgraded signal', { actual: downgradedStatus });
@@ -408,6 +409,39 @@
       assert(buckets.every(bucket => bucket.scoreField === 'riskAdjustedScore'), 'analytics_score_field_regression', 'Score bucket analytics drifted away from riskAdjustedScore', { buckets });
     });
     checks.push({ scenario: 'analytics_truth_contract', passed: true });
+
+    const auditSummary = root.RUNTIME_AUDIT.summarizeLatest({
+      alertTraceEngine: {
+        updatedAt: 123,
+        process_start: {
+          meta: { btcContext: 'sideway', regimeType: 'CHOP' },
+          antiSpam: {},
+          signals: [
+            {
+              symbol: 'CAP',
+              blockers: ['cooldown_active_77m', 'capital_guard:cooldown_active_77m'],
+              rr: 1.4,
+              conf: 0.6,
+            },
+            {
+              symbol: 'PREG',
+              blockers: ['pre_gate_blocked:WATCH'],
+              rr: 0.8,
+              conf: 0.5,
+            },
+          ],
+        },
+      },
+      alertTrace: { signals: [] },
+      executionTrace: null,
+    });
+    const primaryCooldown = auditSummary.primaryBlockers.find(item => item.reason === 'capital_guard:cooldown_active_77m');
+    const rawCooldown = auditSummary.rawBlockers.find(item => item.reason === 'cooldown_active_77m');
+    const rawCapitalCooldown = auditSummary.rawBlockers.find(item => item.reason === 'capital_guard:cooldown_active_77m');
+    assert(primaryCooldown?.count === 1, 'runtime_audit_primary_double_count', 'Primary blocker ranking should count one canonical cooldown blocker per signal', auditSummary);
+    assert(rawCooldown?.count === 1 && rawCapitalCooldown?.count === 1, 'runtime_audit_raw_missing', 'Raw blocker ranking should preserve raw and wrapped cooldown blockers', auditSummary);
+    assert(auditSummary.blockerRanking === auditSummary.primaryBlockers, 'runtime_audit_compat_alias_regression', 'blockerRanking should remain a compatibility alias for primaryBlockers', auditSummary);
+    checks.push({ scenario: 'runtime_audit_blocker_contract', passed: true });
 
     return {
       ok: true,

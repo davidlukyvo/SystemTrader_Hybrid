@@ -393,7 +393,7 @@ window.AlertEngine = (() => {
           if (isMaintainedSignal(s)) return 'maintained_state';
           if (String(s?.executionTier || '').toUpperCase() === 'OBSERVE') return 'observe_tier';
           if (String(s?.fakePumpRisk || '').toLowerCase() === 'high') return 'fake_pump_high';
-          if (st === 'PLAYABLE' && !(Number(s?.rr || 0) >= 1.6 && Number(s?.executionConfidence || 0) >= 0.60)) return 'below_playable_rr_conf';
+          if (st === 'PLAYABLE' && !(Number(s?.rr || 0) >= 1.4 && Number(s?.executionConfidence || 0) >= 0.58)) return 'below_playable_rr_conf';
           if (st === 'PROBE' && String(meta?.btcContext || '').toLowerCase() === 'bull' && String(meta?.regimeType || '').toUpperCase() === 'CHOP' && !!(s?.authorityTrace?.triggerMatched)) {
             return 'below_bull_chop_probe_rr_conf';
           }

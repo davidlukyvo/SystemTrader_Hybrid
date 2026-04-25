@@ -61,6 +61,33 @@ window.RUNTIME_AUDIT = (() => {
     return 'other_blocked';
   }
 
+  function rankBlockers(counts, limit = 12) {
+    return Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, limit)
+      .map(([reason, count]) => ({ reason, count }));
+  }
+
+  function primaryBlockerReason(blockers = []) {
+    const reasons = (Array.isArray(blockers) ? blockers : [])
+      .map(reason => String(reason || '').trim())
+      .filter(Boolean);
+    if (!reasons.length) return 'unknown';
+
+    const lower = reasons.map(reason => reason.toLowerCase());
+    const findReason = (predicate) => {
+      const idx = lower.findIndex(predicate);
+      return idx >= 0 ? reasons[idx] : '';
+    };
+
+    return findReason(reason => reason.startsWith('pre_gate_blocked:'))
+      || findReason(reason => reason.startsWith('capital_guard:'))
+      || findReason(reason => reason.includes('cooldown_active_') || reason.includes('loss_streak_guard_') || reason.includes('daily_trade_limit_') || reason.includes('exposure_cap_'))
+      || findReason(reason => reason === 'all_tiers_rejected')
+      || findReason(reason => reason.includes('[ready]') || reason.includes('[playable]') || reason.includes('[probe]') || reason.includes('playable_path_failed'))
+      || reasons[0];
+  }
+
   function summarizeSignals(signals = [], uiSignals = []) {
     const counts = {
       total: signals.length,
@@ -71,6 +98,7 @@ window.RUNTIME_AUDIT = (() => {
       no_blocker_recorded: 0,
     };
     const blockerCounts = {};
+    const primaryBlockerCounts = {};
     const metrics = {
       conf_eq_050: 0,
       rr_lt_065: 0,
@@ -93,6 +121,8 @@ window.RUNTIME_AUDIT = (() => {
       counts[bucket] = (counts[bucket] || 0) + 1;
 
       const blockers = Array.isArray(signal.blockers) ? signal.blockers : [];
+      const primary = primaryBlockerReason(blockers);
+      primaryBlockerCounts[primary] = (primaryBlockerCounts[primary] || 0) + 1;
       blockers.forEach((reason) => {
         const key = String(reason || '').trim() || 'unknown';
         blockerCounts[key] = (blockerCounts[key] || 0) + 1;
@@ -116,12 +146,10 @@ window.RUNTIME_AUDIT = (() => {
       if (entrySignal === 'wait') metrics.trigger_wait += 1;
     });
 
-    const blockerRanking = Object.entries(blockerCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 12)
-      .map(([reason, count]) => ({ reason, count }));
+    const rawBlockers = rankBlockers(blockerCounts);
+    const primaryBlockers = rankBlockers(primaryBlockerCounts);
 
-    return { counts, blockerRanking, metrics };
+    return { counts, blockerRanking: primaryBlockers, primaryBlockers, rawBlockers, metrics };
   }
 
   function summarizeExecutionTrace(execTrace = getExecutionTrace()) {
@@ -145,7 +173,7 @@ window.RUNTIME_AUDIT = (() => {
     const counts = summary.counts || {};
     const metrics = summary.populationMetrics || {};
     const exec = summary.executionTrace || {};
-    const topBlockers = Array.isArray(summary.blockerRanking) ? summary.blockerRanking.slice(0, 3) : [];
+    const topBlockers = Array.isArray(summary.primaryBlockers) ? summary.primaryBlockers.slice(0, 3) : [];
     const meta = summary.meta || {};
     const parts = [];
 
@@ -203,6 +231,8 @@ window.RUNTIME_AUDIT = (() => {
       signalCountSource: signals.length ? (Array.isArray(processStart?.signals) ? 'process_start.signals' : 'no_meaningful_alert.debug') : 'none',
       counts: signalSummary.counts,
       blockerRanking: signalSummary.blockerRanking,
+      primaryBlockers: signalSummary.primaryBlockers,
+      rawBlockers: signalSummary.rawBlockers,
       populationMetrics: signalSummary.metrics,
       filteredCandidates,
       executionTrace: summarizeExecutionTrace(executionTrace),
@@ -214,8 +244,11 @@ window.RUNTIME_AUDIT = (() => {
     try {
       console.groupCollapsed?.('[RUNTIME AUDIT] Summary');
       console.log(summary);
-      if (Array.isArray(summary.blockerRanking) && summary.blockerRanking.length) {
-        console.table?.(summary.blockerRanking);
+      if (Array.isArray(summary.primaryBlockers) && summary.primaryBlockers.length) {
+        console.table?.(summary.primaryBlockers);
+      }
+      if (Array.isArray(summary.rawBlockers) && summary.rawBlockers.length) {
+        console.table?.(summary.rawBlockers);
       }
       console.groupEnd?.();
     } catch (_) {}

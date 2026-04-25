@@ -397,8 +397,12 @@ function renderScanner() {
                 : (scanFetchStatus === 'done') ? 'var(--green)'
                 : (scanFetchStatus === 'error') ? 'var(--red)' 
                 : 'var(--text-muted)';
+    const lastScanTs = Number(ST.scanMeta?.lastScanTs || ST.scanMeta?.lastScan || 0);
+    const scanTimeText = lastScanTs > 0
+      ? ` | ${new Date(lastScanTs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+      : '';
     const text = scanFetchStatus === 'loading' ? '&#x23F3; Scanning...'
-                : scanFetchStatus === 'done' ? `&#x2705; Found: ${actionable} approved signals | Top: ${topCount}${cooldownText}`
+                : scanFetchStatus === 'done' ? `&#x2705; Found: ${actionable} approved signals | Top: ${topCount}${scanTimeText}${cooldownText}`
                 : scanFetchStatus === 'error' ? `&#x26A0; Error${cooldownText}`
                 : `&#x2B24; Ready${cooldownText}`;
     return { color, text };
@@ -438,7 +442,7 @@ function renderScanner() {
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
       <div>
         <div style="font-size:14px;font-weight:800;color:var(--accent);margin-bottom:3px">&#x1F3DB;&#xFE0F; Smart Execution Engine v9.5</div>
-        <div class="text-sm text-muted">Multi-timeframe 15m/4h/1D scan with adaptive quant filters</div>
+        <div class="text-sm text-muted">Multi-timeframe 15m/1h/4h/1D scan with adaptive quant filters</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:${status.color}">${status.text}</div>

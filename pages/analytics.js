@@ -38,22 +38,36 @@ function renderTruthBasisCard() {
   var truth = (analyticsData && analyticsData.truthSummary) || null;
   if (!truth) return '';
   return '<div class="card mb-20">' +
-    '<div class="card-title">Truth Basis</div>' +
-    '<div class="text-sm text-muted" style="margin-bottom:12px">Performance tables currently use <strong>' + analyticsPopulationLabel() + '</strong>. Portfolio-bound carryovers are excluded from expectancy and feedback views.</div>' +
+    '<div class="card-title">Truth Basis — Nền dữ liệu đang đọc</div>' +
+    '<div class="text-sm text-muted" style="margin-bottom:12px">Các bảng performance hiện đang dùng nhóm <strong>' + analyticsPopulationLabel() + '</strong>. Những position-bound/carryover từ portfolio được loại khỏi expectancy và feedback views để tránh làm nhiễu edge thật.</div>' +
     '<div class="grid-4 gap-8">' +
-      '<div style="padding:12px;border-radius:8px;background:var(--bg-hover)"><div class="text-xs text-muted">Technical Signals</div><div class="fw-700">' + (truth.technicalSignals || 0) + '</div><div class="text-xs text-muted">Outcomes ' + (truth.technicalOutcomes || 0) + '</div></div>' +
-      '<div style="padding:12px;border-radius:8px;background:var(--bg-hover)"><div class="text-xs text-muted">Execution Signals</div><div class="fw-700">' + (truth.executionSignals || 0) + '</div><div class="text-xs text-muted">Outcomes ' + (truth.executionOutcomes || 0) + '</div></div>' +
-      '<div style="padding:12px;border-radius:8px;background:var(--bg-hover)"><div class="text-xs text-muted">Alert Signals</div><div class="fw-700">' + (truth.alertSignals || 0) + '</div><div class="text-xs text-muted">Outcomes ' + (truth.alertOutcomes || 0) + '</div></div>' +
-      '<div style="padding:12px;border-radius:8px;background:var(--bg-hover)"><div class="text-xs text-muted">Rejected Signals</div><div class="fw-700">' + (truth.rejectedSignals || 0) + '</div><div class="text-xs text-muted">Outcomes ' + (truth.rejectedOutcomes || 0) + '</div></div>' +
+      '<div style="padding:12px;border-radius:8px;background:var(--bg-hover)"><div class="text-xs text-muted">Technical Signals</div><div class="fw-700">' + (truth.technicalSignals || 0) + '</div><div class="text-xs text-muted">Outcome đã đánh giá ' + (truth.technicalOutcomes || 0) + '</div></div>' +
+      '<div style="padding:12px;border-radius:8px;background:var(--bg-hover)"><div class="text-xs text-muted">Execution Signals</div><div class="fw-700">' + (truth.executionSignals || 0) + '</div><div class="text-xs text-muted">Outcome đã đánh giá ' + (truth.executionOutcomes || 0) + '</div></div>' +
+      '<div style="padding:12px;border-radius:8px;background:var(--bg-hover)"><div class="text-xs text-muted">Alert Signals</div><div class="fw-700">' + (truth.alertSignals || 0) + '</div><div class="text-xs text-muted">Outcome đã đánh giá ' + (truth.alertOutcomes || 0) + '</div></div>' +
+      '<div style="padding:12px;border-radius:8px;background:var(--bg-hover)"><div class="text-xs text-muted">Rejected Signals</div><div class="fw-700">' + (truth.rejectedSignals || 0) + '</div><div class="text-xs text-muted">Outcome đã đánh giá ' + (truth.rejectedOutcomes || 0) + '</div></div>' +
     '</div>' +
-    '<div class="text-xs text-muted" style="margin-top:10px">Score bucket basis: <strong>' + analyticsScoreFieldLabel() + '</strong> (risk-adjusted quality), not raw scanner score.</div>' +
-    '<div class="text-xs text-muted" style="margin-top:6px">Portfolio-bound outcomes excluded: ' + (truth.portfolioBoundOutcomes || 0) + '</div>' +
+    '<div class="text-xs text-muted" style="margin-top:10px">Score bucket dùng <strong>' + analyticsScoreFieldLabel() + '</strong> (risk-adjusted quality), không dùng raw scanner score.</div>' +
+    '<div class="text-xs text-muted" style="margin-top:6px">Portfolio-bound outcomes đã loại khỏi thống kê: ' + (truth.portfolioBoundOutcomes || 0) + '</div>' +
+  '</div>';
+}
+
+function renderAnalyticsQuickGuide(totalOutcomes) {
+  return '<div class="card mb-20" style="border-left:4px solid var(--cyan)">' +
+    '<div class="card-title">🧭 Cách dùng nhanh cho người mới</div>' +
+    '<div class="text-sm text-muted" style="line-height:1.7">' +
+      '<strong>1.</strong> Bắt đầu với population <strong>Execution-approved</strong> để xem nhóm thật sự đã qua authority/capital gate.<br>' +
+      '<strong>2.</strong> Xem <strong>Setup</strong> và <strong>Category</strong> để biết kiểu setup/narrative nào đang có edge tốt hơn.<br>' +
+      '<strong>3.</strong> Dùng <strong>14d Heatmap</strong> như lớp cảnh báo edge decay: nếu bị veto/downgrade thì hệ thống sẽ bảo thủ hơn với lệnh mới.<br>' +
+      '<strong>4.</strong> Xem <strong>Holding Period</strong> để hiểu mốc D1/D3/D7/D14/D30 nào đang hợp với edge hiện tại.<br>' +
+      '<strong>5.</strong> Nếu sample còn ít, chỉ xem là tín hiệu tham khảo — đừng kết luận mạnh hoặc tự retune threshold từ vài outcome đầu.' +
+    '</div>' +
+    '<div class="text-xs text-muted" style="margin-top:10px">Hiện có ' + (totalOutcomes || 0) + ' outcome records trong population đang chọn. Analytics giúp audit edge; authority cuối vẫn nằm ở Alpha Guard.</div>' +
   '</div>';
 }
 
 function renderAnalyticsTable(headers, rows) {
   if (!rows || !rows.length) {
-    return '<div class="text-sm text-muted" style="padding:24px;text-align:center">Chua co du lieu outcome. Sau vai ngay scan, outcome evaluator se tu dong danh gia signal performance tai D1/D3/D7/D14/D30.</div>';
+    return '<div class="text-sm text-muted" style="padding:24px;text-align:center">Chưa có dữ liệu outcome. Sau vài ngày scan, Outcome Evaluator sẽ tự động đánh giá hiệu suất signal tại các mốc D1/D3/D7/D14/D30.</div>';
   }
   return '<div style="overflow-x:auto"><table class="j-table"><thead><tr>' + headers.map(function(h) { return '<th>' + h + '</th>'; }).join('') + '</tr></thead><tbody>' + rows.join('') + '</tbody></table></div>';
 }
@@ -80,7 +94,7 @@ function renderCategoryView() {
     '</div>'
   ) : '';
 
-  return '<div class="card mb-20"><div class="card-title">Category Performance</div><div class="text-sm text-muted" style="margin-bottom:12px">Tracking win/loss ratio theo nhom Narrative (AI, MEME, RWA, L1...) using ' + analyticsPopulationLabel() + ' only.</div>' + summaryHtml + renderAnalyticsTable(headers, rows) + '</div>';
+  return '<div class="card mb-20"><div class="card-title">Category Performance</div><div class="text-sm text-muted" style="margin-bottom:12px">Theo dõi win/loss ratio theo nhóm narrative như AI, MEME, RWA, L1... Chỉ tính trên nhóm ' + analyticsPopulationLabel() + '.</div>' + summaryHtml + renderAnalyticsTable(headers, rows) + '</div>';
 }
 
 function renderSetupView() {
@@ -91,7 +105,7 @@ function renderSetupView() {
     var pctColor = r.avgPctChange >= 0 ? 'var(--green)' : 'var(--red)';
     return '<tr><td class="fw-700">' + r.setup + '</td><td class="mono">' + r.total + '</td><td class="mono text-green">' + r.winners + '</td><td class="mono text-red">' + r.losers + '</td><td class="mono fw-700" style="color:' + wrColor + '">' + r.winRate + '%</td><td class="mono" style="color:' + pctColor + '">' + (r.avgPctChange > 0 ? '+' : '') + r.avgPctChange + '%</td><td class="mono">' + r.avgR + 'R</td></tr>';
   });
-  return '<div class="card mb-20"><div class="card-title">Setup Performance</div><div class="text-sm text-muted" style="margin-bottom:12px">Win rate va avg return theo tung loai setup using ' + analyticsPopulationLabel() + '. Data tu checkpoint snapshot evaluation.</div>' + renderAnalyticsTable(headers, rows) + '</div>';
+  return '<div class="card mb-20"><div class="card-title">Setup Performance</div><div class="text-sm text-muted" style="margin-bottom:12px">Win rate và average return theo từng loại setup, dựa trên nhóm ' + analyticsPopulationLabel() + '. Dữ liệu đến từ checkpoint snapshot evaluation.</div>' + renderAnalyticsTable(headers, rows) + '</div>';
 }
 
 function renderRegimeView() {
@@ -103,7 +117,7 @@ function renderRegimeView() {
     var pctColor = r.avgPctChange >= 0 ? 'var(--green)' : 'var(--red)';
     return '<tr><td class="fw-700">' + (regimeEmoji[r.regime] || '?') + ' ' + r.regime + '</td><td class="mono">' + r.total + '</td><td class="mono text-green">' + r.winners + '</td><td class="mono text-red">' + r.losers + '</td><td class="mono fw-700" style="color:' + wrColor + '">' + r.winRate + '%</td><td class="mono" style="color:' + pctColor + '">' + (r.avgPctChange > 0 ? '+' : '') + r.avgPctChange + '%</td></tr>';
   });
-  return '<div class="card mb-20"><div class="card-title">Regime Performance</div><div class="text-sm text-muted" style="margin-bottom:12px">Signal performance phan theo BTC context luc scan using ' + analyticsPopulationLabel() + '.</div>' + renderAnalyticsTable(headers, rows) + '</div>';
+  return '<div class="card mb-20"><div class="card-title">Regime Performance</div><div class="text-sm text-muted" style="margin-bottom:12px">Hiệu suất signal theo BTC context tại thời điểm scan. Chỉ tính trên nhóm ' + analyticsPopulationLabel() + '.</div>' + renderAnalyticsTable(headers, rows) + '</div>';
 }
 
 function renderScoreView() {
@@ -114,7 +128,7 @@ function renderScoreView() {
     var pctColor = r.avgPctChange >= 0 ? 'var(--green)' : 'var(--red)';
     return '<tr><td class="fw-700">' + r.bucket + '</td><td class="mono">' + r.total + '</td><td class="mono text-green">' + r.winners + '</td><td class="mono text-red">' + r.losers + '</td><td class="mono fw-700" style="color:' + wrColor + '">' + r.winRate + '%</td><td class="mono" style="color:' + pctColor + '">' + (r.avgPctChange > 0 ? '+' : '') + r.avgPctChange + '%</td></tr>';
   });
-  return '<div class="card mb-20"><div class="card-title">Score Bucket Performance</div><div class="text-sm text-muted" style="margin-bottom:12px">Buckets are evaluated on <strong>' + analyticsScoreFieldLabel() + '</strong> using ' + analyticsPopulationLabel() + ' only. Raw scanner score remains a gate/ranking input, not the analytics bucket basis.</div>' + renderAnalyticsTable(headers, rows) + '</div>';
+  return '<div class="card mb-20"><div class="card-title">Score Bucket Performance</div><div class="text-sm text-muted" style="margin-bottom:12px">Các bucket được đánh giá bằng <strong>' + analyticsScoreFieldLabel() + '</strong> và chỉ tính trên nhóm ' + analyticsPopulationLabel() + '. Raw scanner score vẫn là input cho gate/ranking, không phải nền bucket analytics.</div>' + renderAnalyticsTable(headers, rows) + '</div>';
 }
 
 function renderHoldingView() {
@@ -125,11 +139,11 @@ function renderHoldingView() {
     var pctColor = r.avgPctChange >= 0 ? 'var(--green)' : 'var(--red)';
     return '<tr><td class="fw-700">' + r.period + '</td><td class="mono">' + r.total + '</td><td class="mono text-green">' + r.winners + '</td><td class="mono text-red">' + r.losers + '</td><td class="mono fw-700" style="color:' + wrColor + '">' + r.winRate + '%</td><td class="mono" style="color:' + pctColor + '">' + (r.avgPctChange > 0 ? '+' : '') + r.avgPctChange + '%</td><td class="mono">' + r.avgR + 'R</td></tr>';
   });
-  return '<div class="card mb-20"><div class="card-title">Holding Period Performance</div><div class="text-sm text-muted" style="margin-bottom:12px">D1 vs D3 vs D7 vs D14 vs D30 — khoang thoi gian nao toi uu cho edge cua ban? Based on ' + analyticsPopulationLabel() + ' only.</div>' + renderAnalyticsTable(headers, rows) + '</div>';
+  return '<div class="card mb-20"><div class="card-title">Holding Period Performance</div><div class="text-sm text-muted" style="margin-bottom:12px">So sánh D1 vs D3 vs D7 vs D14 vs D30 để xem khoảng thời gian nào tối ưu cho edge của Bạn. Chỉ tính trên nhóm ' + analyticsPopulationLabel() + '.</div>' + renderAnalyticsTable(headers, rows) + '</div>';
 }
 
 function renderHeatmapView() {
-  if (!window.ANALYTICS_ENGINE) return '<div class="text-sm text-muted">Feedback Engine not available.</div>';
+  if (!window.ANALYTICS_ENGINE) return '<div class="text-sm text-muted">Feedback Engine chưa sẵn sàng.</div>';
   
   // Calculate live stats (don't force, rely on cache if recent)
   const stats = window.ANALYTICS_ENGINE.getCachedStats('execution');
@@ -137,7 +151,7 @@ function renderHeatmapView() {
     window.ANALYTICS_ENGINE.computeRollingStats(false, 'execution').then(() => {
         if (analyticsView === 'heatmap') renderAnalytics();
     });
-    return '<div class="text-center text-muted p-20">⏳ Computing 14d Rolling Analytics...</div>';
+    return '<div class="text-center text-muted p-20">⏳ Đang tính 14d Rolling Analytics...</div>';
   }
 
   const catHeaders = ['Category', '14d Trades', 'Win Rate', 'Avg R', 'Status'];
@@ -171,7 +185,7 @@ function renderHeatmapView() {
 
   const html = 
     `<div class="card mb-20"><div class="card-title">Category Feedback Loop (14d Rolling)</div>
-     <div class="text-sm text-muted mb-12">Win rate tracking from execution-approved outcomes only. $<span class="text-red">${th.vetoWinRate}%</span> triggers Auto-Veto, $<span class="text-yellow">${th.downgradeWinRate}%</span> triggers PROBE downgrade. (Min ${th.minSampleSize} trades).</div>` +
+     <div class="text-sm text-muted mb-12">Theo dõi win rate từ execution-approved outcomes trong 14 ngày gần nhất. Dưới <span class="text-red">${th.vetoWinRate}%</span> sẽ kích hoạt Auto-Veto, dưới <span class="text-yellow">${th.downgradeWinRate}%</span> sẽ hạ xuống PROBE. Cần tối thiểu ${th.minSampleSize} trades để kết luận.</div>` +
      renderAnalyticsTable(catHeaders, catRows) +
     `</div>
     <div class="card mb-20"><div class="card-title">Setup Feedback Loop (14d Rolling)</div>`+
@@ -182,13 +196,13 @@ function renderHeatmapView() {
 }
 
 function renderAuditView() {
-  if (!window.ANALYTICS_ENGINE) return '<div class="text-sm text-muted">Analytics Engine not available.</div>';
+  if (!window.ANALYTICS_ENGINE) return '<div class="text-sm text-muted">Analytics Engine chưa sẵn sàng.</div>';
   const stats = window.ANALYTICS_ENGINE.getCachedStats('execution');
   if (!stats || !stats.updatedAt) {
     window.ANALYTICS_ENGINE.computeRollingStats(false, 'execution').then(() => {
       if (analyticsView === 'audit') renderAnalytics();
     });
-    return '<div class="text-center text-muted p-20">⏳ Computing Audit Data...</div>';
+    return '<div class="text-center text-muted p-20">⏳ Đang tính dữ liệu audit...</div>';
   }
 
   const cfg = window.ST?.config || { expectancy: {}, execution: {} };
@@ -198,7 +212,7 @@ function renderAuditView() {
   const configHtml = `
     <div class="card mb-20" style="border-left: 4px solid var(--cyan)">
       <div class="card-title">⚙️ Active Hardening Config</div>
-      <div class="text-sm text-muted mb-12">Expectancy audit below is computed from execution-approved, non-portfolio-bound outcomes only.</div>
+      <div class="text-sm text-muted mb-12">Expectancy audit bên dưới chỉ tính execution-approved outcomes và loại trừ portfolio-bound/carryover để giữ edge sạch.</div>
       <div style="display:flex; gap:12px; flex-wrap:wrap">
         ${renderConfigTag(cfg.execution?.READY_SCORE, 'READY Score')}
         ${renderConfigTag(cfg.execution?.READY_CONF, 'READY Conf')}
@@ -243,7 +257,7 @@ async function renderAnalytics() {
   if (!page) return;
 
   if (!analyticsData && !analyticsLoading) {
-    page.innerHTML = '<div class="page-header"><div class="page-title">📊 Analytics</div><div class="page-sub">Dang tai du lieu...</div></div><div class="card" style="text-align:center;padding:60px"><div class="text-muted">⏳ Loading analytics data...</div></div>';
+    page.innerHTML = '<div class="page-header"><div class="page-title">📊 Analytics</div><div class="page-sub">Đang tải dữ liệu...</div></div><div class="card" style="text-align:center;padding:60px"><div class="text-muted">⏳ Đang tải dữ liệu analytics...</div></div>';
     await loadAnalyticsData();
   }
 
@@ -258,16 +272,16 @@ async function renderAnalytics() {
     analyticsView === 'score' ? renderScoreView() :
     renderHoldingView();
 
-  page.innerHTML = '<div class="page-header"><div class="page-title">📊 Analytics — Edge Performance</div><div class="page-sub">Checkpoint snapshot evaluation · D1/D3/D7/D14/D30 · ' + totalOutcomes + ' outcome records · basis: ' + analyticsPopulationLabel() + '</div></div>' +
+  page.innerHTML = '<div class="page-header"><div class="page-title">📊 Analytics — Edge Performance</div><div class="page-sub">Checkpoint snapshot evaluation · D1/D3/D7/D14/D30 · ' + totalOutcomes + ' outcome records · nền dữ liệu: ' + analyticsPopulationLabel() + '</div></div>' +
     '<div class="grid-4 mb-20">' +
-      '<div class="stat-card stat-green"><div class="stat-label">Signals</div><div class="stat-value">' + (stats.signals || 0) + '</div><div class="stat-note">Total recorded</div></div>' +
-      '<div class="stat-card stat-cyan"><div class="stat-label">Outcomes</div><div class="stat-value">' + (stats.outcomes || 0) + '</div><div class="stat-note">Checkpoints evaluated</div></div>' +
-      '<div class="stat-card stat-yellow"><div class="stat-label">Scans</div><div class="stat-value">' + (stats.scans || 0) + '</div><div class="stat-note">Scan history</div></div>' +
-      '<div class="stat-card stat-purple"><div class="stat-label">Trades</div><div class="stat-value">' + (stats.trades || 0) + '</div><div class="stat-note">Journal entries</div></div>' +
+      '<div class="stat-card stat-green"><div class="stat-label">Signals</div><div class="stat-value">' + (stats.signals || 0) + '</div><div class="stat-note">Tổng signal đã lưu</div></div>' +
+      '<div class="stat-card stat-cyan"><div class="stat-label">Outcomes</div><div class="stat-value">' + (stats.outcomes || 0) + '</div><div class="stat-note">Checkpoint đã đánh giá</div></div>' +
+      '<div class="stat-card stat-yellow"><div class="stat-label">Scans</div><div class="stat-value">' + (stats.scans || 0) + '</div><div class="stat-note">Lịch sử scan</div></div>' +
+      '<div class="stat-card stat-purple"><div class="stat-label">Trades</div><div class="stat-value">' + (stats.trades || 0) + '</div><div class="stat-note">Nhật ký trade thủ công</div></div>' +
     '</div>' +
     '<!-- P1-B: Population selector row -->' +
     '<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center;padding:10px 14px;background:rgba(255,255,255,0.03);border-radius:8px;border:1px solid rgba(255,255,255,0.07)">' +
-      '<span class="text-xs text-muted" style="margin-right:2px">Population:</span>' +
+      '<span class="text-xs text-muted" style="margin-right:2px">Population / nhóm dữ liệu:</span>' +
       '<button class="btn btn-xs ' + (analyticsPopulation === 'execution' ? 'btn-primary' : 'btn-outline') + '" onclick="switchAnalyticsPopulation(\'execution\')">Execution-approved</button>' +
       '<button class="btn btn-xs ' + (analyticsPopulation === 'technical' ? 'btn-primary' : 'btn-outline') + '" onclick="switchAnalyticsPopulation(\'technical\')">Technical</button>' +
       '<button class="btn btn-xs ' + (analyticsPopulation === 'v10_only' ? 'btn-primary' : 'btn-outline') + '" onclick="switchAnalyticsPopulation(\'v10_only\')" title="v10 era filter (heuristic) + execution-approved logic. Excludes legacy-era signals identified by missing sig-* ID prefix or absent authority contract fields. schemaVersion tagging is v1 heuristic — treat results as indicative, not certified.">🔬 v10 Era + Exec</button>' +
@@ -286,7 +300,8 @@ async function renderAnalytics() {
     '</div>' +
     renderTruthBasisCard() +
     '<div id="analyticsContent">' + viewContent + '</div>' +
-    '<div class="card mt-20" style="border-color:rgba(0,229,255,.2)"><div class="card-title">💡 Cach doc Analytics</div><div class="text-sm text-muted" style="line-height:1.7"><strong>14d Heatmap (Feedback Engine):</strong> Du lieu real-time dung de auto-veto. Nhung gi bi Veto o day se khong duoc vao lenh.<br><strong>Checkpoint snapshot evaluation:</strong> Evaluator kiem tra gia tai thoi diem D1/D3/D7/D14/D30 sau khi signal duoc tao. Day la snapshot evaluation, khong phai full price-path replay.<br><strong>🔬 v10 Era + Exec:</strong> Loc era (heuristic v1, dua vao sig-* ID prefix va contract fields) ROI do execution-approved. Era filter la v1 nen treat ket qua la indicative, khong phai certified. scanTruthBasis (no_actionable / execution_qualified / technical_qualified_capital_suppressed) la debug field — khong phai nguon authority moi, chi giai thich trang thai cua scan.</div></div>';
+    renderAnalyticsQuickGuide(totalOutcomes) +
+    '<div class="card mt-20" style="border-color:rgba(0,229,255,.2)"><div class="card-title">📘 Ghi chú về dữ liệu Analytics</div><div class="text-sm text-muted" style="line-height:1.7"><strong>14d Heatmap (Feedback Engine):</strong> Dữ liệu rolling 14 ngày dùng để phát hiện edge suy yếu và hỗ trợ auto-veto. Những gì bị veto ở đây sẽ không được đưa vào lệnh mới.<br><strong>Checkpoint snapshot evaluation:</strong> Evaluator kiểm tra giá tại các mốc D1/D3/D7/D14/D30 sau khi signal được tạo. Đây là snapshot tại từng checkpoint, không phải full price-path replay; vì vậy nó không chứng minh toàn bộ đường giá đã đi như thế nào giữa các mốc.<br><strong>🔬 v10 Era + Exec:</strong> Lọc riêng nhóm v10-era theo heuristic v1 (dựa vào prefix ID <code>sig-*</code> và các authority contract fields), rồi chỉ đo ROI trên nhóm execution-approved. Era filter vẫn là heuristic nên hãy xem kết quả là indicative, không phải certified.<br><strong>scanTruthBasis:</strong> Field debug để giải thích trạng thái scan như <code>no_actionable</code>, <code>execution_qualified</code>, hoặc <code>technical_qualified_capital_suppressed</code>. Đây không phải nguồn authority mới và không được dùng để tự nâng quyền trade.</div></div>';
 
 }
 
@@ -297,7 +312,7 @@ function switchAnalyticsView(view) {
 
 async function refreshOutcomesManual() {
   var btn = document.getElementById('btnRefreshOutcomes');
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Evaluating...'; }
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Đang đánh giá...'; }
   try {
     var priceMap = {};
     if (window.ST && window.ST.coins) {
@@ -311,11 +326,11 @@ async function refreshOutcomesManual() {
     analyticsData = null;
     await loadAnalyticsData();
     renderAnalytics();
-    alert('Da evaluate ' + result.evaluated + ' outcomes');
+    alert('Đã evaluate ' + result.evaluated + ' outcomes');
   } catch (err) {
-    alert('Outcome evaluation failed: ' + err.message);
+    alert('Outcome evaluation lỗi: ' + err.message);
   }
-  if (btn) { btn.disabled = false; btn.textContent = '🔄 Refresh Outcomes Now'; }
+  if (btn) { btn.disabled = false; btn.textContent = '🔄 Refresh Outcomes'; }
 }
 
 async function reloadAnalytics() {
