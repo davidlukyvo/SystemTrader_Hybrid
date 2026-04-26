@@ -312,6 +312,19 @@
     assert(!rejectedMessage.includes('🎯 Entry:'), 'alert_trade_block_leak', 'Rejected technical signal should not expose trade levels', { rejectedMessage });
     checks.push({ scenario: 'alert_wording_truth', passed: true });
 
+    const playableProbeChain = root.summarizeActionReason({
+      symbol: 'CHZ',
+      displayStatus: 'PLAYABLE',
+      finalAuthorityStatus: 'PLAYABLE',
+      authorityDecision: 'ALLOW',
+      authorityReason: 'gate_passed_probe',
+      authorityBlockers: ['gate_passed_probe'],
+      executionGatePassed: true,
+      executionActionable: true,
+    });
+    assert(playableProbeChain === 'gate_passed_probe -> playable_authorized', 'playable_reason_chain_regression', 'PLAYABLE/ALLOW reason should preserve probe-pass chain without sounding like plain PROBE', { playableProbeChain });
+    checks.push({ scenario: 'playable_reason_chain_wording', passed: true });
+
     const probeCtx = {
       btcContext: 'sideway',
       regimeType: 'CHOP',

@@ -1,0 +1,31 @@
+[Unit]
+Description=SystemTrader Hybrid browser runtime
+After=network-online.target nginx.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=systemtrader
+Group=systemtrader
+EnvironmentFile=/etc/systemtrader/systemtrader.env
+WorkingDirectory=/opt/systemtrader
+ExecStart=/usr/bin/google-chrome \
+  --headless=new \
+  --disable-gpu \
+  --no-first-run \
+  --no-default-browser-check \
+  --disable-dev-shm-usage \
+  --disable-background-timer-throttling \
+  --disable-backgrounding-occluded-windows \
+  --disable-renderer-backgrounding \
+  --remote-debugging-address=127.0.0.1 \
+  --remote-debugging-port=9222 \
+  --user-data-dir=/var/lib/systemtrader/chrome-profile \
+  ${ST_APP_URL}
+Restart=always
+RestartSec=15
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

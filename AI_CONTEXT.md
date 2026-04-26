@@ -59,6 +59,7 @@ There is no separate `project-brain` doc set by design. This file is the AI memo
 - `deployableTop3`: runtime authority-approved shortlist
 - `authoritativeTop3`: legacy mirror of `deployableTop3`
 - `learningPool`: `execution`, `near_approved`, or `excluded`
+- `behaviorEvidence`: observe-only object on enriched signals — does not affect authority (Phase 1)
 - Alpha Guard: `alpha-guard-core-v51-auth.js`, the final execution authority
 
 ## Current Runtime Notes
@@ -75,6 +76,9 @@ There is no separate `project-brain` doc set by design. This file is the AI memo
 - `portfolio-engine.js` `coolingMs` = same-symbol post-close cooling guard.
 - Future market-data work should learn provider/session/cache patterns, not make unofficial TradingView sockets part of core authority.
 - `docs/archive/` is historical patch context only, not active runtime truth.
+- **Market Behavior Evidence (Phase 1)**: `market-behavior-engine.js` added as observe-only enrichment. Runs after `deployableTop3` is frozen, before persistence. Does NOT affect authority decisions, deployableTop3, Telegram, or capital/portfolio policy. Volume metrics are OHLCV approximations labeled `v1.0-ohlcv-approx`. See `docs/market-behavior-evidence.md`.
+- **Self-hosted Ubuntu/Debian ops**: `docs/SELF_HOSTED_UBUNTU_DEBIAN_RUNBOOK.md` plus `ops/` define nginx static serving, supervised browser runtime, env-backed Telegram relay, health/backup timers, sanitized exports, and optional Phase 2 `systemtrader-runner.timer`. Local `python -m http.server` remains supported.
+- **Runtime audit blocker contract**: `blockerRanking` mirrors `primaryBlockers`; use `rawBlockers` for full low-level detail when investigating duplicated-looking reasons such as cooldown/capital guard.
 
 ## Telegram Truth
 

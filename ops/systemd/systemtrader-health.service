@@ -1,0 +1,11 @@
+[Unit]
+Description=SystemTrader Hybrid health check
+After=systemtrader-browser.service
+
+[Service]
+Type=oneshot
+User=systemtrader
+Group=systemtrader
+EnvironmentFile=/etc/systemtrader/systemtrader.env
+WorkingDirectory=/opt/systemtrader
+ExecStart=/usr/bin/node /opt/systemtrader/ops/health-check.js

@@ -34,7 +34,7 @@ window.LIVE_SCANNER = (() => {
   async function run(progressCb = null, opts = {}) {
     const startedAt = Date.now();
     const timings = { total: 0 };
-    const mark = (key) => timings[key] = Date.now() - (timings._last || startedAt); timings._last = Date.now();
+    const mark = (key) => { timings[key] = Date.now() - (timings._last || startedAt); timings._last = Date.now(); };
 
     try {
       // 1. Discovery Phase (Universe)
@@ -62,7 +62,13 @@ window.LIVE_SCANNER = (() => {
       mark('shortlist');
 
       // 3. Deep Analysis Phase
-      const { results, fetchFailedSymbols, symbolTimings } = await window.SCANNER_REFINEMENT.performScanLoop(candidates, btcContext, progressCb);
+      // klineCache: external map passed into performScanLoop.
+      // SCANNER_REFINEMENT.performScanLoop will populate it if it accepts the 4th argument.
+      // MBE will reuse it to avoid extra API calls.
+      const klineCache = {};
+      const { results, fetchFailedSymbols, symbolTimings } = await window.SCANNER_REFINEMENT.performScanLoop(
+        candidates, btcContext, progressCb, klineCache
+      );
       mark('deep_scan');
 
       // 4. Refinement & Alpha Guard Phase
@@ -88,12 +94,44 @@ window.LIVE_SCANNER = (() => {
       window.__LAST_SCAN_CONTRACT_SUMMARY__ = contractSummary;
 
       const technicalTop3 = (Array.isArray(sorted) ? sorted : []).slice(0, 3);
+
+      // ── FREEZE deployableTop3 BEFORE Market Behavior Evidence ────────────
+      // deployableTop3 is derived HERE as a snapshot of authority-approved coins.
+      // MBE runs AFTER this line — it cannot affect membership, order, or eligibility.
+      // This snapshot is passed into sessionContext and persisted unchanged.
+      // Refinement: per approval, behavior fields are guaranteed on persisted signals,
+      // NOT necessarily on deployableTop3 snapshot entries.
       const deployableTop3 = window.SCANNER_REFINEMENT.deriveDeployableTop3(authorityCoins);
+      // ─────────────────────────────────────────────────────────────────────
+
+      // ── Market Behavior Evidence — observe-only (Phase 1) ────────────────
+      // Enriches authorityCoins with behavior fields AFTER deployableTop3 is frozen.
+      // AUTHORITY CONTRACT: MBE must NOT change:
+      //   displayStatus, finalAuthorityStatus, authorityDecision,
+      //   executionGatePassed, executionBreakdown, or any authority field.
+      // deployableTop3 snapshot above is fully unaffected.
+      // Fail-safe: if MBE errors, enrichedCoins = authorityCoins (original, unchanged).
+      let enrichedCoins = authorityCoins;
+      if (window.MARKET_BEHAVIOR_ENGINE?.enrich) {
+        try {
+          enrichedCoins = authorityCoins.map(coin => {
+            const klines = (klineCache && klineCache[coin.symbol]) || null;
+            return window.MARKET_BEHAVIOR_ENGINE.enrich(coin, klines, btcContext);
+          });
+          console.log('[MBE] Behavior evidence enriched for', enrichedCoins.length, 'coins',
+            '| inputQuality sample:', enrichedCoins[0]?.behaviorInputQuality || 'n/a');
+        } catch (mbeErr) {
+          console.warn('[MBE] Enrichment batch failed — using un-enriched coins', mbeErr?.message);
+          enrichedCoins = authorityCoins; // fail-safe: revert to original
+        }
+      }
+      // ─────────────────────────────────────────────────────────────────────
+
       const finalizedAt = Date.now();
-      
+
       const sessionContext = {
-        btcContext, insight, top3, technicalTop3, deployableTop3, portfolio, 
-        startedAt, 
+        btcContext, insight, top3, technicalTop3, deployableTop3, portfolio,
+        startedAt,
         finalizedAt,
         durationMs: finalizedAt - startedAt,
         opts,
@@ -102,12 +140,14 @@ window.LIVE_SCANNER = (() => {
         regime: window.ST?.scanMeta?.regime || {}
       };
 
-      await window.SCANNER_PERSISTENCE.finalizeScanSession(authorityCoins, fetchFailedSymbols, sessionContext);
-      
+      // Persist enrichedCoins (with behavior fields).
+      // deployableTop3 in sessionContext is the pre-MBE authority snapshot.
+      await window.SCANNER_PERSISTENCE.finalizeScanSession(enrichedCoins, fetchFailedSymbols, sessionContext);
+
       const totalDuration = Date.now() - startedAt;
       timings.total = totalDuration;
       window.__LAST_SCAN_STAGE_TIMINGS__ = timings;
-      
+
       // Performance Budget Calculation (Target: 30s)
       const BUDGET_MS = 30000;
       window.__LAST_SCAN_PERF_BUDGET__ = {
@@ -124,25 +164,25 @@ window.LIVE_SCANNER = (() => {
 
       // Quality Summary
       const qualitySummary = {
-        ready: authorityCoins.filter(c => String(c.status).toUpperCase() === 'READY').length,
-        playable: authorityCoins.filter(c => String(c.status).toUpperCase() === 'PLAYABLE').length,
-        probe: authorityCoins.filter(c => String(c.status).toUpperCase() === 'PROBE').length,
-        watch: authorityCoins.filter(c => String(c.status).toUpperCase() === 'WATCH').length,
-        avoid: authorityCoins.filter(c => String(c.status).toUpperCase() === 'AVOID').length,
+        ready:     enrichedCoins.filter(c => String(c.status).toUpperCase() === 'READY').length,
+        playable:  enrichedCoins.filter(c => String(c.status).toUpperCase() === 'PLAYABLE').length,
+        probe:     enrichedCoins.filter(c => String(c.status).toUpperCase() === 'PROBE').length,
+        watch:     enrichedCoins.filter(c => String(c.status).toUpperCase() === 'WATCH').length,
+        avoid:     enrichedCoins.filter(c => String(c.status).toUpperCase() === 'AVOID').length,
         fetch_fail: fetchFailedSymbols.length
       };
       window.__LAST_SCAN_QUALITY_SUMMARY__ = qualitySummary;
 
       window.__LAST_SCAN_COORDINATOR_SUMMARY__ = {
         scanId: window.ST?.scanMeta?.lastScanId,
-        symbols: authorityCoins.length,
+        symbols: enrichedCoins.length,
         violations: contractSummary.violationCount,
         duration: totalDuration,
-        durationMs: totalDuration // Numeric consistency
+        durationMs: totalDuration
       };
 
       progressCb?.('✅ Alpha Guard orchestration complete', 100);
-      return { coins: authorityCoins, top3: deployableTop3, timings, durationMs: totalDuration };
+      return { coins: enrichedCoins, top3: deployableTop3, timings, durationMs: totalDuration };
 
     } catch (err) {
       console.error('[LIVE_SCANNER] Orchestration Error:', err);

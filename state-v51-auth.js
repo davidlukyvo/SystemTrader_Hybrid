@@ -787,7 +787,10 @@ function summarizeActionReason(coin) {
   const blockers = Array.isArray(coin?.authorityBlockers) ? coin.authorityBlockers : [];
   const primary = String(blockers[0] || reason || '').trim();
   const search = primary.toLowerCase();
+  const displayStatus = getExecutionDisplayStatus(coin);
+  const decision = String(coin?.authorityDecision || coin?.decision || '').toUpperCase();
   if (!primary) return 'No clear authority reason';
+  if (displayStatus === 'PLAYABLE' && decision === 'ALLOW' && search === 'gate_passed_probe') return 'gate_passed_probe -> playable_authorized';
   if (/^dedup:/.test(search) || search.includes('portfolio_binding') || search.includes('position_bound:')) return 'Already tracked in portfolio';
   if (search.includes('cooldown_active_')) return 'Cooldown still active';
   if (search.includes('daily_trade_limit_')) return 'Daily trade limit reached';

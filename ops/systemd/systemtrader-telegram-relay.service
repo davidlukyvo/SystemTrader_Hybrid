@@ -1,0 +1,19 @@
+[Unit]
+Description=SystemTrader Hybrid Telegram env relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=systemtrader
+Group=systemtrader
+EnvironmentFile=/etc/systemtrader/systemtrader.env
+WorkingDirectory=/opt/systemtrader
+ExecStart=/usr/bin/node /opt/systemtrader/ops/telegram-relay.js
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

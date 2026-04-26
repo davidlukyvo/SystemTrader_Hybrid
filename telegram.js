@@ -106,16 +106,61 @@ window.Telegram = (() => {
   }
 
   function isConfigured() {
-    return !!(config.botToken && config.chatId);
+    return !!(relayUrl() || (config.botToken && config.chatId));
+  }
+
+  function relayUrl() {
+    if (typeof window === 'undefined' || !window.location) return '';
+    if (typeof window.SYSTEMTRADER_TELEGRAM_RELAY_URL === 'string') return window.SYSTEMTRADER_TELEGRAM_RELAY_URL.trim();
+    if (/^https?:$/.test(window.location.protocol)) return '/api/telegram/send';
+    return '';
+  }
+
+  function isLocalOrigin() {
+    const host = String(window.location?.hostname || '').toLowerCase();
+    return ['localhost', '127.0.0.1', '::1'].includes(host);
+  }
+
+  function isRelayStrictMode() {
+    if (window.SYSTEMTRADER_TELEGRAM_STRICT_ENV_RELAY === true) return true;
+    try {
+      const params = new URLSearchParams(window.location.search || '');
+      if (['env', 'relay', 'strict'].includes(String(params.get('telegramMode') || '').toLowerCase())) return true;
+    } catch {}
+    return !isLocalOrigin();
+  }
+
+  async function sendViaRelay(message) {
+    const url = relayUrl();
+    if (!url) return { ok: false, skipped: true, reason: 'relay_unavailable' };
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message }),
+      });
+      if (!res.ok) return { ok: false, reason: `relay_http_${res.status}` };
+      const body = await res.json().catch(() => ({}));
+      if (body?.ok === false) return { ok: false, reason: body.error || 'relay_rejected' };
+      return { ok: true, source: 'env_relay' };
+    } catch (err) {
+      return { ok: false, reason: String(err?.message || err || 'relay_failed') };
+    }
   }
 
   async function send(message) {
-    if (!isConfigured()) throw new Error('Telegram chưa cấu hình bot token / chat id');
+    const relay = await sendViaRelay(message);
+    if (relay.ok) return relay;
+    if (relayUrl() && isRelayStrictMode()) {
+      throw new Error(`Telegram env relay unavailable; refusing legacy local-secret fallback (${relay.reason || 'relay_failed'})`);
+    }
+    if (!(config.botToken && config.chatId)) throw new Error('Telegram chưa cấu hình env relay hoặc bot token / chat id');
     const url = `https://api.telegram.org/bot${config.botToken}/sendMessage`;
     const trace = {
       at: Date.now(),
-      chatId: config.chatId,
+      chatId: String(config.chatId || '').replace(/^(.{4}).*(.{3})$/, '$1…$2'),
       enabled: config.enabled,
+      relayFallbackReason: relay.reason,
       messagePreview: String(message || '').slice(0, 500)
     };
     try {
@@ -232,7 +277,15 @@ window.Telegram = (() => {
     const token = tempToken || cfg.botToken;
     const cid = tempChatId || cfg.chatId;
 
-    if (!token || !cid) throw new Error('Vui lòng nhập Bot Token và Chat ID trước khi test.');
+    if (!tempToken && !tempChatId) {
+      const relay = await sendViaRelay('✅ <b>SystemTrader Telegram relay test</b>\nEnv-backed relay is reachable.');
+      if (relay.ok) return relay;
+      if (relayUrl() && isRelayStrictMode()) {
+        throw new Error(`Telegram env relay test failed; refusing legacy local-secret fallback (${relay.reason || 'relay_failed'})`);
+      }
+    }
+
+    if (!token || !cid) throw new Error('Vui lòng cấu hình Telegram env relay hoặc nhập Bot Token và Chat ID trước khi test.');
 
     const msg = [
       '🧪 <b>System Trader v10.6.9.56</b>',

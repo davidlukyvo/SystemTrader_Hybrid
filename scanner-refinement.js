@@ -213,7 +213,7 @@ window.SCANNER_REFINEMENT = (() => {
     return 0.8;
   }
 
-  async function performScanLoop(candidates, btcContext, progressCb) {
+  async function performScanLoop(candidates, btcContext, progressCb, klineCache = null) {
     const results = []; 
     const fetchFailedSymbols = [];
     const symbolTimings = [];
@@ -223,6 +223,7 @@ window.SCANNER_REFINEMENT = (() => {
        const symbolStart = Date.now();
        try {
          const klines = await window.SCANNER_UNIVERSE.fetchMulti(coin);
+          if (klineCache && klines) klineCache[coin.symbol] = klines;
          const row = window.SCANNER_ANALYSIS.deepScanCandidate(coin, klines, btcContext);
          
          const duration = Date.now() - symbolStart;

@@ -9,7 +9,7 @@ var scanHistoryLoading = false;
 async function loadScanHistory() {
   scanHistoryLoading = true;
   try {
-    scanHistoryData = await DB.getScans({ limit: 50 });
+    scanHistoryData = await DB.getScans({ limit: 50, direction: 'prev' });
   } catch (err) {
     console.error('[SCAN-HISTORY] Load error:', err);
     scanHistoryData = [];
@@ -265,15 +265,80 @@ function renderScanSignalDetailContent(signals) {
     var statusCls = display === 'READY' ? 'badge-green' : display === 'PLAYABLE' ? 'badge-cyan' : display === 'PROBE' ? 'badge-yellow' : ['EARLY','WATCH'].includes(display) ? 'badge-gray' : 'badge-red';
     var cat = s.category || 'OTHER';
     var evaluated = Array.isArray(s.outcomesEvaluated) ? s.outcomesEvaluated : [];
-    return '<tr><td><span class="mono fw-700">' + s.symbol + '</span></td><td><span class="badge badge-purple">' + cat + '</span></td><td><span class="badge ' + statusCls + '">' + display + '</span></td><td class="text-sm">' + setupLabel(s) + '</td><td class="mono fw-700">' + (s.riskAdjustedScore || s.score || 0) + '</td><td class="mono">' + (s.rr || 0).toFixed(1) + 'x</td><td class="mono">' + Math.round((s.executionConfidence || 0) * 100) + '%</td><td class="mono">' + fmtPrice(s.entry) + '</td><td class="text-xs">' + (s.entryTiming || '—') + '</td><td class="text-xs">' + (evaluated.length ? evaluated.join(', ') : '<span class="text-muted">pending</span>') + '</td></tr>';
+    var hasBev = s.behaviorEvidence && typeof s.behaviorEvidence === 'object';
+    var bevId = 'bev-' + (s.id || s.symbol || Math.random().toString(36).slice(2, 8));
+
+    var signalRow = '<tr>' +
+      '<td><span class="mono fw-700">' + s.symbol + '</span></td>' +
+      '<td><span class="badge badge-purple">' + cat + '</span></td>' +
+      '<td><span class="badge ' + statusCls + '">' + display + '</span></td>' +
+      '<td class="text-sm">' + setupLabel(s) + '</td>' +
+      '<td class="mono fw-700">' + (s.riskAdjustedScore || s.score || 0) + '</td>' +
+      '<td class="mono">' + (s.rr || 0).toFixed(1) + 'x</td>' +
+      '<td class="mono">' + Math.round((s.executionConfidence || 0) * 100) + '%</td>' +
+      '<td class="mono">' + fmtPrice(s.entry) + '</td>' +
+      '<td class="text-xs">' + (s.entryTiming || '—') + '</td>' +
+      '<td class="text-xs">' + (evaluated.length ? evaluated.join(', ') : '<span class="text-muted">pending</span>') + '</td>' +
+      '<td style="text-align:center">' + (hasBev
+        ? '<button onclick="toggleBehaviorEvidence(\'' + bevId + '\')" title="Behavior Evidence (observe only)" style="background:none;border:1px solid rgba(0,229,255,0.3);border-radius:4px;cursor:pointer;color:var(--cyan);font-size:10px;padding:2px 5px">🔬</button>'
+        : '<span class="text-muted" style="font-size:10px">—</span>') + '</td>' +
+      '</tr>';
+
+    var bevRow = '';
+    if (hasBev) {
+      var bev = s.behaviorEvidence;
+      var failModes = Array.isArray(s.failureModeCandidate) ? s.failureModeCandidate.join(', ') : '—';
+      var approxNotes = Array.isArray(s.behaviorApproximationNotes) && s.behaviorApproximationNotes.length ? s.behaviorApproximationNotes.join(' · ') : '';
+      var iqColor = s.behaviorInputQuality === 'full_ohlcv' ? 'var(--green)' : s.behaviorInputQuality === 'partial' ? 'var(--yellow)' : 'var(--text)';
+      var flags = [
+        bev.absorptionEvidence      ? '✅ absorption'      : null,
+        bev.reclaimEvidence         ? '✅ reclaim'         : null,
+        bev.breakoutAcceptance      ? '✅ breakoutOK'      : null,
+        bev.failedBreakdownEvidence ? '✅ failedBreakdown' : null,
+        bev.sellingExhaustion       ? '✅ sellExhaustion'  : null,
+        bev.volumeExpansion         ? '✅ volExpansion'    : null,
+        bev.lateEntryRisk           ? '⚠️ lateEntry' : null,
+        bev.stopTooTightRisk        ? '⚠️ stopTight' : null,
+        bev.noFollowThroughRisk     ? '⚠️ noFollowThru' : null,
+      ].filter(Boolean);
+      bevRow = '<tr id="' + bevId + '" style="display:none"><td colspan="11" style="padding:0 4px 8px">' +
+        '<div style="background:rgba(0,229,255,0.04);border:1px solid rgba(0,229,255,0.18);border-radius:6px;padding:10px 14px;font-size:11px;line-height:1.7">' +
+          '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px">' +
+            '<span class="badge badge-gray">🔬 Behavior Evidence</span>' +
+            '<span style="color:' + iqColor + ';font-size:10px">' + (s.behaviorInputQuality || 'n/a') + '</span>' +
+            '<span class="text-muted" style="font-size:10px">· observe-only · not used in trade decisions</span>' +
+          '</div>' +
+          '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:4px">' +
+            '<span>Zone Quality: <strong>' + (s.priceZoneQuality != null ? s.priceZoneQuality + '/100' : '—') + '</strong></span>' +
+            '<span>Vol Support: <strong>' + (s.volumeSupportScore != null ? s.volumeSupportScore + '/100' : '—') + '</strong></span>' +
+            '<span>TP Risk: <strong>' + (s.volumeResistanceRisk != null ? s.volumeResistanceRisk + '/100' : '—') + '</strong></span>' +
+            '<span>Path Quality: <strong>' + (s.pathToTPQuality != null ? s.pathToTPQuality + '/100' : '—') + '</strong></span>' +
+          '</div>' +
+          '<div style="margin-bottom:4px">Flags: <span style="color:var(--cyan)">' + (flags.join(' · ') || 'none') + '</span></div>' +
+          '<div style="margin-bottom:4px">Failure Modes: <strong>' + failModes + '</strong></div>' +
+          (approxNotes ? '<div class="text-muted" style="font-size:10px">Approx: ' + approxNotes + '</div>' : '') +
+          '<div class="text-muted" style="font-size:10px">Version: ' + (s.behaviorEngineVersion || 'n/a') + '</div>' +
+        '</div></td></tr>';
+    }
+    return signalRow + bevRow;
   }).join('');
 
-  detail.innerHTML = '<div class="card"><div class="card-title">Signals from scan (' + signals.length + ')</div>' + filterHtml + '<div style="overflow-x:auto"><table class="j-table"><thead><tr><th>Symbol</th><th>Category</th><th>Status</th><th>Setup</th><th>Score</th><th>RR</th><th>Conf</th><th>Entry</th><th>Timing</th><th>Outcomes</th></tr></thead><tbody>' + tableRows + '</tbody></table></div></div>';
+  detail.innerHTML = '<div class="card"><div class="card-title">Signals from scan (' + signals.length + ')</div>' + filterHtml +
+    '<div style="overflow-x:auto"><table class="j-table"><thead><tr>' +
+    '<th>Symbol</th><th>Category</th><th>Status</th><th>Setup</th><th>Score</th><th>RR</th><th>Conf</th><th>Entry</th><th>Timing</th><th>Outcomes</th>' +
+    '<th title="Market Behavior Evidence (observe only)">🔬</th>' +
+    '</tr></thead><tbody>' + tableRows + '</tbody></table></div></div>';
 }
 
 function filterScanSignalsByCategory(category) {
   window.__CURRENT_SCAN_CATEGORY_FILTER__ = category;
   renderScanSignalDetailContent(window.__CURRENT_SCAN_SIGNALS__);
+}
+
+// Toggle behavior evidence panel (observe-only display)
+function toggleBehaviorEvidence(bevId) {
+  var el = document.getElementById(bevId);
+  if (el) el.style.display = el.style.display === 'none' ? 'table-row' : 'none';
 }
 
 async function reloadScanHistory() {

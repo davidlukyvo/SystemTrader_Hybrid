@@ -896,6 +896,40 @@ window.DB = (() => {
 
   /* ── Export / Import ──────────────────────────────────── */
 
+  function redactBackupSecret(value) {
+    if (Array.isArray(value)) return value.map(redactBackupSecret);
+    if (!value || typeof value !== 'object') return value;
+    const out = {};
+    for (const [key, inner] of Object.entries(value)) {
+      if (/^(botToken|chatId)$/i.test(key) || /telegram.*(token|chat|secret)/i.test(key)) {
+        out[key] = '';
+      } else {
+        out[key] = redactBackupSecret(inner);
+      }
+    }
+    return out;
+  }
+
+  function sanitizeExportSettings(settings) {
+    if (!Array.isArray(settings)) return [];
+    return settings.map(record => {
+      if (!record || typeof record !== 'object') return record;
+      if (record.key === 'telegramConfig') {
+        return {
+          ...record,
+          value: {
+            ...redactBackupSecret(record.value),
+            secretSource: 'redacted_for_backup',
+          },
+        };
+      }
+      return {
+        ...record,
+        value: redactBackupSecret(record.value),
+      };
+    });
+  }
+
   async function exportAll() {
     const [rawScans, rawSignals, trades, outcomes, settings] = await Promise.all([
       getAllRecords(STORES.scans),
@@ -915,7 +949,7 @@ window.DB = (() => {
       signals,
       trades,
       outcomes,
-      settings,
+      settings: sanitizeExportSettings(settings),
     };
   }
 

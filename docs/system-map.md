@@ -17,7 +17,9 @@ flowchart TD
     D --> G[scanner-analysis.js]
     D --> H[scanner-refinement.js]
     D --> I[alpha-guard-core-v51-auth.js]
-    D --> J[scanner-persistence.js]
+    I --> T[derive deployableTop3]
+    T --> MBE["market-behavior-engine.js &#91;observe-only&#93;"]
+    MBE --> J[scanner-persistence.js]
 
     I --> K[capital-engine.js]
     I --> L[portfolio-engine.js]
@@ -49,7 +51,8 @@ flowchart TD
     I --> J[Capital global cooldown and portfolio same-symbol cooling]
     J --> K[Merge authority truth]
     K --> L[Derive deployableTop3]
-    L --> M[Persist scan and patch scanMeta]
+    L --> MBE["Market Behavior Evidence&#10;observe-only enrichment&#10;OHLCV approx"]
+    MBE --> M[Persist scan and patch scanMeta]
     M --> N[Dashboard / Scanner UI]
     M --> O[Runtime audit]
     M --> P[Learning / Telegram]
@@ -107,4 +110,5 @@ For a whole scan:
 1. Run `RUNTIME_AUDIT.summarizeLatest()`.
 2. Check `counts.total`, `counts.*_blocked`, and `filteredCandidates`.
 3. Use `blockerRanking` to find the dominant choke point.
-4. Compare `technicalTop3` with `deployableTop3`.
+4. Use `primaryBlockers` for deduplicated root causes and `rawBlockers` for full evidence.
+5. Compare `technicalTop3` with `deployableTop3`.

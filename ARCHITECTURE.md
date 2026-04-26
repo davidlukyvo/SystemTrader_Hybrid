@@ -29,6 +29,7 @@ Scanner pipeline:
 - `clean-universe.js`: symbol taxonomy, hard/soft exclusions
 - `scanner-analysis.js`: kline fetch, technical features, scoring, RR, confidence, levels, volume/pump fields
 - `scanner-refinement.js`: post-scan refinement, technical shortlist, authority merge, deployable shortlist
+- `market-behavior-engine.js`: observe-only behavior enrichment — runs after `deployableTop3` is frozen, before persistence (Phase 1; see `docs/market-behavior-evidence.md`)
 - `scanner-persistence.js`: finalized scan persistence and `ST.scanMeta` sync
 
 Execution authority:
@@ -52,6 +53,14 @@ Alerts and audit:
 - `telegram.js`: Telegram config, dedup, anti-spam, send layer
 - `runtime-audit.js`: live scan blocker distribution and short summary utility
 
+Self-hosted operations:
+
+- `ops/bootstrap-vps.sh`: Ubuntu/Debian bootstrap for nginx, Chrome runtime, relay, timers, and optional runner units
+- `ops/telegram-relay.js`: server-side Telegram relay backed by `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`
+- `ops/health-check.js`: Chrome DevTools Protocol health/staleness check
+- `ops/export-backup.js`: sanitized `DB.exportAll()` backup writer
+- `ops/scanner-runner.js`: optional Phase 2 systemd one-shot scan runner over Chrome DevTools Protocol
+
 ## Script Load Order
 
 Scripts load synchronously from `index.html`. Do not reorder without checking dependencies.
@@ -64,11 +73,12 @@ High-level order:
 4. market/scanner modules: `binance-market-data.js`, `native-momentum.js`, `scanner-universe.js`, `scanner-analysis.js`, `scanner-refinement.js`, `scanner-persistence.js`, `live-scanner.js`
 5. outcome/learning/ranking: `outcome-evaluator.js`, `learning-engine.js`, `outcome-linker.js`, `edge-adapter.js`, `pro-edge.js`
 6. capital/regime/authority: `capital-flow.js`, `capital-engine.js`, `market-insight.js`, `regime-engine.js`, `outcome-engine.js`, `promotion-engine.js`, `alpha-guard-core-v51-auth.js`
-7. display/alerts/audit: `execution-sync.js`, `telegram.js`, `alert-engine.js`, `runtime-audit.js`
-8. UI pages: `pages/dashboard.js`, `pages/scanner.js`, `pages/scorer.js`, `pages/models.js`, `pages/analytics.js`, and other page modules
-9. boot: `app.js`
+7. observe-only enrichment: `market-behavior-engine.js`
+8. display/alerts/audit: `execution-sync.js`, `telegram.js`, `alert-engine.js`, `runtime-audit.js`
+9. UI pages: `pages/dashboard.js`, `pages/scanner.js`, `pages/scorer.js`, `pages/models.js`, `pages/analytics.js`, and other page modules
+10. boot: `app.js`
 
-Runtime note: `runtime-audit.js` loads after `alert-engine.js` and before main page consumers.
+Runtime note: `scanner-persistence.js` loads before `market-behavior-engine.js`, but MBE is called only inside `live-scanner.js` after Alpha Guard authority merge and after `deployableTop3` is frozen. `runtime-audit.js` loads after `alert-engine.js` and before main page consumers.
 
 ## Signal Lifecycle
 
@@ -82,6 +92,8 @@ Binance exchangeInfo + ticker/24hr
   -> alpha-guard-core-v51-auth.js
   -> capital-engine.js / portfolio-engine.js
   -> scanner-refinement.js mergeAuthorityCoins
+  -> derive deployableTop3
+  -> market-behavior-engine.js observe-only enrichment
   -> scanner-persistence.js
   -> ST.scanMeta + DB
   -> dashboard/scanner UI + runtime-audit + learning + Telegram
@@ -267,10 +279,14 @@ Fields to inspect:
 - `meta.sessionStats`
 - `counts`
 - `blockerRanking`
+- `primaryBlockers`
+- `rawBlockers`
 - `populationMetrics`
 - `filteredCandidates`
 - `executionTrace`
 - `signalCountSource`
+
+`blockerRanking` intentionally mirrors `primaryBlockers` so the main view reads as deduplicated root causes. Use `rawBlockers` when you need full low-level blocker evidence, including duplicated-looking cooldown/capital guard reasons.
 
 Use runtime audit to distinguish:
 
@@ -339,6 +355,7 @@ Four fields on persisted scan records describe qualification counts. They have *
 | `top3` | Legacy scanner-side shortlist filtered to `status === 'READY'`. Kept for compatibility only. | READY only | `scanner-refinement.js` |
 | `technicalTop3` | Technical shortlist before final authority / capital suppression when explicitly passed. If not passed, it currently falls back to legacy `top3`, which can be misleading on actionable-no-ready scans. | Intended technical shortlist | `scanner-persistence.js` |
 | `deployableTop3` | **Deployable shortlist across READY / PLAYABLE / PROBE** (up to 3 coins) | READY + PLAYABLE + PROBE | `scanner-refinement.js → isFinalDeployableCoin` |
+| `behaviorEvidence` | Observe-only evidence fields on persisted signal records. Never an authority source and never used for Telegram eligibility. | Persisted signals only | `market-behavior-engine.js` |
 | `executionQualifiedCount` | **READY-tier qualified count only** — how many coins reached the strictest authority tier | READY only | `scanner-persistence.js (eb_ready)` |
 | `qualifiedCount` | Deprecated alias for `executionQualifiedCount`. Always identical. Do not read separately. | READY only | `db.js normalizeScanRecord` |
 | `qualifiedCoins` | Array of READY-tier coin symbols (strings, not objects) | READY only | `scanner-persistence.js (eb_ready filter)` |

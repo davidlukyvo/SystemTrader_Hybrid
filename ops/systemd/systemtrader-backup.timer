@@ -1,0 +1,10 @@
+[Unit]
+Description=Run SystemTrader Hybrid sanitized backup export daily
+
+[Timer]
+OnCalendar=*-*-* 00:20:00
+AccuracySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
