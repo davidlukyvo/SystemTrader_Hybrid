@@ -58,6 +58,11 @@ function sanitizeJournal(value) {
 function sanitizeScanMeta(value) {
   const base = { lastScan: null, lastScanId: '', lastScanTs: 0, source: '', coins: [], top3: [], technicalTop3: [], deployableTop3: [], authoritativeTop3: [], authoritativeTop3Legacy: false, cache: {}, regime: {}, insight: {}, scheduler: { enabled: false, hours: ['06:00', '07:00', '08:00', '09:00', '10:30', '14:30', '17:00', '21:00', '23:00', '00:00'], lastAutoRunAt: 0, lastAutoRunHourKey: '' }, lastScanSource: '', lastScanTrigger: '' };
   if (!value || typeof value !== 'object' || Array.isArray(value)) return base;
+  const deployableTop3 = Array.isArray(value.deployableTop3) ? value.deployableTop3 : [];
+  const authoritativeTop3 = Array.isArray(value.authoritativeTop3) ? value.authoritativeTop3 : deployableTop3;
+  const explicitLegacy = Object.prototype.hasOwnProperty.call(value, 'authoritativeTop3Legacy')
+    ? value.authoritativeTop3Legacy === true
+    : false;
   return {
     ...base,
     ...value,
@@ -67,11 +72,9 @@ function sanitizeScanMeta(value) {
     coins: Array.isArray(value.coins) ? value.coins : [],
     top3: Array.isArray(value.top3) ? value.top3 : [],
     technicalTop3: Array.isArray(value.technicalTop3) ? value.technicalTop3 : [],
-    deployableTop3: Array.isArray(value.deployableTop3) ? value.deployableTop3 : [],
-    authoritativeTop3: Array.isArray(value.authoritativeTop3)
-      ? value.authoritativeTop3
-      : (Array.isArray(value.deployableTop3) ? value.deployableTop3 : []),
-    authoritativeTop3Legacy: value.authoritativeTop3Legacy !== false,
+    deployableTop3,
+    authoritativeTop3,
+    authoritativeTop3Legacy: deployableTop3.length > 0 ? false : explicitLegacy,
     cache: value.cache && typeof value.cache === 'object' && !Array.isArray(value.cache) ? value.cache : {},
     regime: value.regime && typeof value.regime === 'object' && !Array.isArray(value.regime) ? value.regime : {},
     insight: value.insight && typeof value.insight === 'object' && !Array.isArray(value.insight) ? value.insight : {},

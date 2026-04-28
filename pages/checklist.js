@@ -173,7 +173,7 @@ function renderChecklistEmptyState(message = 'Chưa có coin đủ điều kiệ
       <div class="card-title">Checklist</div>
       <div class="text-sm text-muted">${message}</div>
       <div class="text-sm text-muted" style="margin-top:8px">
-        Hãy scan lại hoặc chọn coin khác từ Coin Scanner.
+        Hãy scan lại hoặc chọn coin khác từ Crypto Scanner.
       </div>
     </div>
   `;

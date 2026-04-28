@@ -223,7 +223,12 @@ window.SCANNER_REFINEMENT = (() => {
        const symbolStart = Date.now();
        try {
          const klines = await window.SCANNER_UNIVERSE.fetchMulti(coin);
-          if (klineCache && klines) klineCache[coin.symbol] = klines;
+          if (klineCache && klines) {
+            [coin.symbol, coin.base, coin.baseAsset, klines.pair]
+              .map(v => String(v || '').toUpperCase())
+              .filter(Boolean)
+              .forEach(key => { klineCache[key] = klines; });
+          }
          const row = window.SCANNER_ANALYSIS.deepScanCandidate(coin, klines, btcContext);
          
          const duration = Date.now() - symbolStart;

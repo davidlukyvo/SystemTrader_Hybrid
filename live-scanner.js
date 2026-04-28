@@ -28,6 +28,21 @@ window.LIVE_SCANNER = (() => {
     };
   }
 
+  function getBehaviorKlines(coin, klineCache) {
+    if (!coin || !klineCache) return null;
+    const candidates = [
+      coin.symbol,
+      coin.base,
+      coin.baseAsset,
+      coin.pair,
+      coin.symbol ? `${coin.symbol}USDT` : '',
+    ].map(v => String(v || '').toUpperCase()).filter(Boolean);
+    for (const key of candidates) {
+      if (klineCache[key]) return klineCache[key];
+    }
+    return null;
+  }
+
   /**
    * Main Scan Orchestration Loop
    */
@@ -115,7 +130,7 @@ window.LIVE_SCANNER = (() => {
       if (window.MARKET_BEHAVIOR_ENGINE?.enrich) {
         try {
           enrichedCoins = authorityCoins.map(coin => {
-            const klines = (klineCache && klineCache[coin.symbol]) || null;
+            const klines = getBehaviorKlines(coin, klineCache);
             return window.MARKET_BEHAVIOR_ENGINE.enrich(coin, klines, btcContext);
           });
           console.log('[MBE] Behavior evidence enriched for', enrichedCoins.length, 'coins',

@@ -1,4 +1,4 @@
-/* \u2500\u2500 COIN SCANNER PAGE v9.3.1 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
+/* \u2500\u2500 CRYPTO SCANNER PAGE v9.3.1 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
 let scanFilters = {
   capMin: 5, capMax: 100, pumpMax: 100,
   structure: 'all', narratives: []
@@ -485,7 +485,7 @@ function renderScanner() {
 
   $('page-scanner').innerHTML = `
   <div class="page-header">
-    <div class="page-title">&#x1F50D; Coin Scanner</div>
+    <div class="page-title">&#x1F50D; Crypto Scanner</div>
     <div class="page-sub">Execution-grade signal detection and universe management</div>
   </div>
 
