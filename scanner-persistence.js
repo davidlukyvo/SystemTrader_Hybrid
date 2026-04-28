@@ -153,6 +153,9 @@ window.SCANNER_PERSISTENCE = (() => {
       // 2. Synchronize window.ST State (Authority Truth)
       if (window.ST?.setCoins) {
         window.ST.setCoins(finalizedCoins);
+        if (typeof window.syncWatchlistFromCoins === 'function') {
+          window.syncWatchlistFromCoins();
+        }
       }
       
       if (window.ST?.patchScanMeta) {

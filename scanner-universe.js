@@ -8,6 +8,12 @@ window.SCANNER_UNIVERSE = (() => {
 
   function isLeveragedToken(base = '') { return /(UP|DOWN|BULL|BEAR)$/i.test(base); }
   function safeNum(v, d = 0) { const n = Number(v); return Number.isFinite(n) ? n : d; }
+  const HARD_STABLE_BASES = new Set([
+    'USD1','USDT','USDC','FDUSD','TUSD','USDP','DAI','BUSD','USDS','USDE','USDD','USD0','USDJ',
+    'PYUSD','FRAX','LUSD','GUSD','EURC','EURI'
+  ]);
+  const HARD_SYMBOL_HYGIENE_BASES = new Set(['EUR','U','BANANAS31']);
+  function hasNonAsciiSymbol(base = '') { return /[^\x20-\x7E]/.test(String(base || '')); }
 
   function regimeConfig(btcContext) {
     if (btcContext === 'bull') return { minQuoteVolume: 5_000_000, maxQuoteVolume: 90_000_000, minTrades: 5500, maxAbs24hPump: 32, maxCandidates: 24, readyThreshold: 76, earlyThreshold: 66, minRelVol: 1.25, rrReady: 1.8, rrEarly: 1.5 };
@@ -165,6 +171,8 @@ window.SCANNER_UNIVERSE = (() => {
       const base = s.baseAsset || '';
       const symbol = s.symbol || '';
       if (!symbol.endsWith('USDT')) continue;
+      if (HARD_STABLE_BASES.has(String(base).toUpperCase())) continue;
+      if (HARD_SYMBOL_HYGIENE_BASES.has(String(base).toUpperCase()) || hasNonAsciiSymbol(base)) continue;
       const universeCheck = window.CLEAN_UNIVERSE?.classify ? window.CLEAN_UNIVERSE.classify({ symbol, baseAsset: base, name: s.baseAsset }) : { excluded: false };
       const softReason = String(universeCheck.reason || '').toLowerCase();
       const blockSoftMemeInSideway = btcContext === 'sideway' && (softReason === 'meme_soft_excluded' || softReason === 'soft_excluded');

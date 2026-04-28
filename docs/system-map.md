@@ -112,3 +112,11 @@ For a whole scan:
 3. Use `blockerRanking` to find the dominant choke point.
 4. Use `primaryBlockers` for deduplicated root causes and `rawBlockers` for full evidence.
 5. Compare `technicalTop3` with `deployableTop3`.
+
+## Universe Hygiene Contract
+
+Stable / pegged assets are hard-excluded before authority evaluation. `clean-universe.js` is the primary taxonomy source; `scanner-universe.js` also carries a narrow fallback hard list for stable bases. Examples: `USD1`, `USDT`, `USDC`, `FDUSD`, `TUSD`, `DAI`, `USDE`, `USDD`, `BUSD`, `PYUSD`, `USDP`, `USDJ`, `EURC`, `EURI`.
+
+If one of these reaches `deployableTop3` or Telegram, classify it as a universe hygiene bug, not an Alpha Guard bug.
+
+Symbol hygiene also hard-excludes exact noisy bases observed in runtime (`EUR`, `U`, `BANANAS31`) plus non-ASCII base symbols such as `币安人生`. This is scanner input cleanup, not ranking or authority policy.

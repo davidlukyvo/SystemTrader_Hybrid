@@ -108,6 +108,10 @@ Binance exchangeInfo + ticker/24hr
 - hard excludes: stable/USD bases, leveraged tokens, wrapped/staked assets, commodity-backed assets, and other permanently invalid instruments
 - soft excludes: assets that may be undesirable in some regimes but are not always invalid
 
+Stable / pegged assets are hard-excluded universe hygiene, not Alpha Guard policy. Current hard-excluded bases include `USD1`, `USDT`, `USDC`, `FDUSD`, `TUSD`, `DAI`, `USDE`, `USDD`, `BUSD`, `PYUSD`, `USDP`, `USDJ`, `EURC`, and `EURI`. These assets must not reach scan results, `deployableTop3`, scanner UI, or Telegram opportunity alerts.
+
+Symbol hygiene hard-excludes exact noisy bases observed in exchange discovery (`EUR`, `U`, `BANANAS31`) and non-ASCII base symbols. These are excluded before Alpha Guard so scanner noise does not become authority work.
+
 Current code behavior:
 
 - `scanner-universe.js` skips hard-excluded symbols.

@@ -5,7 +5,8 @@
 
 window.CLEAN_UNIVERSE = (() => {
   const STABLE_BASES = new Set([
-    'USDT','USDC','FDUSD','TUSD','USDP','DAI','BUSD','USDS','USDE','USD0','PYUSD','FRAX','LUSD','GUSD'
+    'USD1','USDT','USDC','FDUSD','TUSD','USDP','DAI','BUSD','USDS','USDE','USDD','USD0','USDJ',
+    'PYUSD','FRAX','LUSD','GUSD','EURC','EURI'
   ]);
 
   /* 🏛️ VSA NOISE REDUCTION LAYER
@@ -15,7 +16,7 @@ window.CLEAN_UNIVERSE = (() => {
   const MAJOR_SOFT_EXCLUDED = new Set([
     'BTC','ETH','BNB','SOL','XRP','ADA','DOGE','TRX','LINK','LTC','BCH','XLM','DOT','AVAX','ATOM','NEAR',
     'APT','SUI','HBAR','ETC','FIL','ICP','UNI','OP','ARB','AAVE','TAO','VET','ALGO','CRO','EGLD','KAS',
-    'MATIC','POL','XMR','MKR','INJ','FTM','SEI','TON','USD1','EUR','U'
+    'MATIC','POL','XMR','MKR','INJ','FTM','SEI','TON','EUR','U'
   ]);
 
   const WRAPPED_OR_STAKED = new Set([
@@ -23,10 +24,16 @@ window.CLEAN_UNIVERSE = (() => {
   ]);
 
   const COMMODITY_BACKED = new Set(['XAUT','PAXG']);
+  const SYMBOL_HYGIENE_HARD = new Set(['EUR','U','BANANAS31']);
   const BAD_MEME_SOFT = new Set(['SHIB','PEPE','BONK','WIF','FLOKI','PENGU']);
   const SOFT_EXCLUDED = new Set(['1000SATS']);
 
   const EXCLUDED_NAMES = [
+    /stablecoin/i,
+    /usd.?pegged/i,
+    /euro.?pegged/i,
+    /\busd\b.*stable/i,
+    /\beur\b.*stable/i,
     /tether gold/i,
     /pax gold/i,
     /wrapped bitcoin/i,
@@ -50,6 +57,10 @@ window.CLEAN_UNIVERSE = (() => {
 
   function isLeveragedToken(base = '') {
     return /(UP|DOWN|BULL|BEAR)$/i.test(String(base || ''));
+  }
+
+  function hasNonAsciiSymbol(base = '') {
+    return /[^\x20-\x7E]/.test(String(base || ''));
   }
 
   function normalizeRegimeContext(context = {}) {
@@ -87,6 +98,7 @@ window.CLEAN_UNIVERSE = (() => {
 
     if (!base) return { excluded: false, softExcluded: false, reason: '', tag: '', lane: 'allow' };
     if (isLeveragedToken(base)) return { excluded: true, softExcluded: false, reason: 'leveraged_token', tag: 'Leveraged token', lane: 'hard_exclude' };
+    if (SYMBOL_HYGIENE_HARD.has(base) || hasNonAsciiSymbol(base)) return { excluded: true, softExcluded: false, reason: 'symbol_hygiene', tag: 'Symbol hygiene', lane: 'hard_exclude' };
     if (STABLE_BASES.has(base)) return { excluded: true, softExcluded: false, reason: 'stable_base', tag: 'Stable / USD base', lane: 'hard_exclude' };
     if (COMMODITY_BACKED.has(base) || /(^|\b)(xaut|paxg)(\b|$)/i.test(symbol) || EXCLUDED_NAMES.some(rx => rx.test(name))) {
       return { excluded: true, softExcluded: false, reason: 'commodity_backed', tag: 'Commodity-backed / gold', lane: 'hard_exclude' };
@@ -151,5 +163,6 @@ window.CLEAN_UNIVERSE = (() => {
     MAJOR_SOFT_EXCLUDED,
     WRAPPED_OR_STAKED,
     COMMODITY_BACKED,
+    SYMBOL_HYGIENE_HARD,
   };
 })();
