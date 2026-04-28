@@ -6,8 +6,76 @@ let scanFilters = {
 let scanFetchStatus = 'idle'; // 'idle' | 'loading' | 'done' | 'error'
 let scanLastFetch = null;
 let hybridScanLock = false;
+let scannerFreshnessLoading = false;
 
 const NARRATIVES = ['AI', 'DePIN', 'Gaming', 'RWA', 'Infra', 'Cross-chain', 'Privacy', 'Data Layer'];
+
+function getFreshnessTag(repeatCount5 = 0) {
+  const n = Number(repeatCount5 || 0);
+  if (n <= 1) return 'new';
+  if (n >= 5) return 'persistent';
+  return 'repeated';
+}
+
+function escapeFreshnessAttr(value) {
+  return String(value || '').replace(/[&<>"']/g, ch => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  }[ch]));
+}
+
+function renderFreshnessBadge(symbol) {
+  const key = String(symbol || '').toUpperCase();
+  const meta = window.__SCANNER_FRESHNESS__?.[key];
+  if (!meta) return '';
+  const tag = meta.freshnessTag || getFreshnessTag(meta.repeatCount5);
+  const cls = tag === 'new' ? 'badge-green' : tag === 'persistent' ? 'badge-yellow' : 'badge-gray';
+  const reason = meta.lastAuthorityReason ? ` | Recent context: ${escapeFreshnessAttr(meta.lastAuthorityReason)}` : '';
+  return `<span class="badge ${cls}" style="font-size:9px" title="Seen in ${meta.repeatCount5 || 0}/5 recent scans${reason}">${tag} ${meta.repeatCount5 || 0}/5</span>`;
+}
+
+// Display-only freshness metadata. Never use this to filter, rank, or authorize signals.
+async function refreshScannerFreshness() {
+  if (scannerFreshnessLoading || !window.DB?.getScans || !window.DB?.getSignals) return;
+  scannerFreshnessLoading = true;
+  try {
+    const scans = await DB.getScans({ limit: 5 });
+    const ids = new Set((scans || []).map(s => s.id).filter(Boolean));
+    if (!ids.size) {
+      window.__SCANNER_FRESHNESS__ = {};
+      window.__SCANNER_FRESHNESS_BUILT_AT__ = Date.now();
+      return;
+    }
+    const signals = await DB.getSignals({ limit: 2000 });
+    const map = {};
+    (signals || []).forEach(s => {
+      if (!ids.has(s.scanId) || !s.symbol) return;
+      const sym = String(s.symbol).toUpperCase();
+      const item = map[sym] || { symbol: sym, scanIds: new Set(), lastAuthorityReason: '' };
+      item.scanIds.add(s.scanId);
+      if (!item.lastAuthorityReason) item.lastAuthorityReason = s.authorityReason || s.reason || '';
+      map[sym] = item;
+    });
+    window.__SCANNER_FRESHNESS__ = Object.fromEntries(Object.entries(map).map(([sym, item]) => {
+      const repeatCount5 = item.scanIds.size;
+      return [sym, {
+        symbol: sym,
+        repeatCount5,
+        freshnessTag: getFreshnessTag(repeatCount5),
+        lastAuthorityReason: item.lastAuthorityReason || '',
+      }];
+    }));
+    window.__SCANNER_FRESHNESS_BUILT_AT__ = Date.now();
+  } catch (err) {
+    console.warn('[SCANNER] Freshness metadata unavailable:', err?.message || err);
+    window.__SCANNER_FRESHNESS_BUILT_AT__ = Date.now();
+  } finally {
+    scannerFreshnessLoading = false;
+  }
+}
 
 function getScannerSetupLabel(coin) {
   if (typeof window.getStructuralSetupLabel === 'function') return window.getStructuralSetupLabel(coin);
@@ -96,7 +164,10 @@ function scannerTop3Panel() {
         <div class="coin-card-compact" onclick="openCoinDetail('${c.id}')">
           <div class="ccc-top">
             <div>
-              <div class="ccc-sym">${i + 1}. ${c.symbol}</div>
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                <div class="ccc-sym">${i + 1}. ${c.symbol}</div>
+                ${renderFreshnessBadge(c.symbol)}
+              </div>
               <div class="ccc-sub">${getScannerSetupLabel(c)} &middot; ${c.entryTiming || 'Watch'}</div>
             </div>
             <div style="text-align:right">
@@ -538,6 +609,12 @@ function renderScanner() {
   `;
 
   renderCoinGrid();
+  const freshnessAge = Date.now() - Number(window.__SCANNER_FRESHNESS_BUILT_AT__ || 0);
+  if (window.DB?.getScans && window.DB?.getSignals && !scannerFreshnessLoading && freshnessAge > 60000) {
+    refreshScannerFreshness().then(() => {
+      if (document.getElementById('page-scanner')) renderScanner();
+    });
+  }
 }
 
 function filteredCoins() {
@@ -687,8 +764,9 @@ function renderCoinGrid() {
     <div class="coin-card ${isSelected ? 'selected' : ''}" data-symbol="${c.symbol}" onclick="openCoinDetail('${c.id}')">
       <div class="coin-header">
         <div>
-          <div style="display:flex;align-items:center;gap:6px">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
             <div class="coin-symbol">${c.symbol}</div>
+            ${renderFreshnessBadge(c.symbol)}
             ${renderAuthorityTrace(c)}
           </div>
           <div class="coin-cap">${c.name}</div>

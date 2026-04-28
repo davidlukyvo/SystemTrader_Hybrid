@@ -6,6 +6,62 @@ var scanHistoryData = null;
 var scanHistoryExpanded = null;
 var scanHistoryLoading = false;
 
+function scanHistoryFreshnessTag(repeatCount5) {
+  var n = Number(repeatCount5 || 0);
+  if (n <= 1) return 'new';
+  if (n >= 5) return 'persistent';
+  return 'repeated';
+}
+
+function scanHistoryEscapeAttr(value) {
+  return String(value || '').replace(/[&<>"']/g, function(ch) {
+    return {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;'
+    }[ch];
+  });
+}
+
+function buildScanHistoryFreshnessMap(scans, signals) {
+  // Display-only freshness metadata. Never use this to filter, rank, or authorize signals.
+  var recentIds = new Set((scans || []).slice(0, 5).map(function(scan) { return scan && scan.id; }).filter(Boolean));
+  var map = {};
+  if (!recentIds.size) return map;
+
+  (signals || []).forEach(function(signal) {
+    if (!signal || !signal.symbol || !recentIds.has(signal.scanId)) return;
+    var sym = String(signal.symbol).toUpperCase();
+    var item = map[sym] || { symbol: sym, scanIds: new Set(), lastAuthorityReason: '' };
+    item.scanIds.add(signal.scanId);
+    if (!item.lastAuthorityReason) item.lastAuthorityReason = signal.authorityReason || signal.reason || '';
+    map[sym] = item;
+  });
+
+  return Object.keys(map).reduce(function(acc, sym) {
+    var repeatCount5 = map[sym].scanIds.size;
+    acc[sym] = {
+      symbol: sym,
+      repeatCount5: repeatCount5,
+      freshnessTag: scanHistoryFreshnessTag(repeatCount5),
+      lastAuthorityReason: map[sym].lastAuthorityReason || ''
+    };
+    return acc;
+  }, {});
+}
+
+function renderScanHistoryFreshnessBadge(symbol) {
+  var key = String(symbol || '').toUpperCase();
+  var meta = window.__SCAN_HISTORY_FRESHNESS__ && window.__SCAN_HISTORY_FRESHNESS__[key];
+  if (!meta) return '';
+  var tag = meta.freshnessTag || scanHistoryFreshnessTag(meta.repeatCount5);
+  var cls = tag === 'new' ? 'badge-green' : tag === 'persistent' ? 'badge-yellow' : 'badge-gray';
+  var reason = meta.lastAuthorityReason ? ' | Recent context: ' + scanHistoryEscapeAttr(meta.lastAuthorityReason) : '';
+  return '<span class="badge ' + cls + '" style="font-size:9px" title="Seen in ' + (meta.repeatCount5 || 0) + '/5 recent scans' + reason + '">' + tag + ' ' + (meta.repeatCount5 || 0) + '/5</span>';
+}
+
 async function loadScanHistory() {
   scanHistoryLoading = true;
   try {
@@ -28,6 +84,7 @@ async function renderScanHistory() {
 
   var scans = scanHistoryData || [];
   var [stats, allSignals] = await Promise.all([DB.getStats(), DB.getSignals({ limit: 2000 })]);
+  window.__SCAN_HISTORY_FRESHNESS__ = buildScanHistoryFreshnessMap(scans, allSignals);
   var scanCounts = new Map();
   var toDisplayStatus = function(row) { return (typeof getExecutionDisplayStatus === 'function' ? getExecutionDisplayStatus(row) : String(row.displayStatus || row.finalAuthorityStatus || row.tradeState || row.executionTier || row.status || 'UNKNOWN')).toUpperCase(); };
   (allSignals || []).forEach(function(s){
@@ -269,7 +326,7 @@ function renderScanSignalDetailContent(signals) {
     var bevId = 'bev-' + (s.id || s.symbol || Math.random().toString(36).slice(2, 8));
 
     var signalRow = '<tr>' +
-      '<td><span class="mono fw-700">' + s.symbol + '</span></td>' +
+      '<td><span class="mono fw-700">' + s.symbol + '</span> ' + renderScanHistoryFreshnessBadge(s.symbol) + '</td>' +
       '<td><span class="badge badge-purple">' + cat + '</span></td>' +
       '<td><span class="badge ' + statusCls + '">' + display + '</span></td>' +
       '<td class="text-sm">' + setupLabel(s) + '</td>' +
