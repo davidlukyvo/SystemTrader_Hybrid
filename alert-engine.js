@@ -107,6 +107,16 @@ window.AlertEngine = (() => {
       || /^no_execution_result$/i.test(reason);
   }
 
+  function isUniverseHygieneBlocked(signal) {
+    if (window.CLEAN_UNIVERSE?.shouldExclude?.(signal)) return true;
+    const raw = String(signal?.base || signal?.baseAsset || signal?.symbol || '').toUpperCase();
+    const base = raw.replace(/(USDT|USDC|USD|BUSD|FDUSD|TUSD|EUR)$/i, '');
+    const blocked = new Set(['USD1','USDT','USDC','FDUSD','TUSD','DAI','USDE','USDD','BUSD','PYUSD','USDP','USDJ','EURC','EURI','EUR','U','BANANAS31']);
+    return blocked.has(raw)
+      || blocked.has(base)
+      || /[^\x20-\x7E]/.test(base);
+  }
+
   function isAuthoritativeAlertCandidate(signal) {
     const displayStatus = getSignalDisplayStatus(signal);
     const authorityDecision = getAuthorityDecision(signal);
@@ -118,6 +128,7 @@ window.AlertEngine = (() => {
       && isExecutionGatePassed(signal)
       && isExecutionActionable(signal)
       && executionTier !== 'OBSERVE'
+      && !isUniverseHygieneBlocked(signal)
       && !isBlockedAuthorityReason(authorityReason);
   }
 

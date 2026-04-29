@@ -146,9 +146,9 @@ function renderHeatmapView() {
   if (!window.ANALYTICS_ENGINE) return '<div class="text-sm text-muted">Feedback Engine chưa sẵn sàng.</div>';
   
   // Calculate live stats (don't force, rely on cache if recent)
-  const stats = window.ANALYTICS_ENGINE.getCachedStats('execution');
+  const stats = window.ANALYTICS_ENGINE.getCachedStats(analyticsPopulation);
   if (!stats || !stats.categories || !stats.setups) {
-    window.ANALYTICS_ENGINE.computeRollingStats(false, 'execution').then(() => {
+    window.ANALYTICS_ENGINE.computeRollingStats(false, analyticsPopulation).then(() => {
         if (analyticsView === 'heatmap') renderAnalytics();
     });
     return '<div class="text-center text-muted p-20">⏳ Đang tính 14d Rolling Analytics...</div>';
@@ -185,7 +185,7 @@ function renderHeatmapView() {
 
   const html = 
     `<div class="card mb-20"><div class="card-title">Category Feedback Loop (14d Rolling)</div>
-     <div class="text-sm text-muted mb-12">Theo dõi win rate từ execution-approved outcomes trong 14 ngày gần nhất. Dưới <span class="text-red">${th.vetoWinRate}%</span> sẽ kích hoạt Auto-Veto, dưới <span class="text-yellow">${th.downgradeWinRate}%</span> sẽ hạ xuống PROBE. Cần tối thiểu ${th.minSampleSize} trades để kết luận.</div>` +
+     <div class="text-sm text-muted mb-12">Theo dõi win rate từ ${analyticsPopulationLabel()} outcomes trong 14 ngày gần nhất. Dưới <span class="text-red">${th.vetoWinRate}%</span> sẽ kích hoạt Auto-Veto, dưới <span class="text-yellow">${th.downgradeWinRate}%</span> sẽ hạ xuống PROBE. Cần tối thiểu ${th.minSampleSize} trades để kết luận.</div>` +
      renderAnalyticsTable(catHeaders, catRows) +
     `</div>
     <div class="card mb-20"><div class="card-title">Setup Feedback Loop (14d Rolling)</div>`+
@@ -197,9 +197,9 @@ function renderHeatmapView() {
 
 function renderAuditView() {
   if (!window.ANALYTICS_ENGINE) return '<div class="text-sm text-muted">Analytics Engine chưa sẵn sàng.</div>';
-  const stats = window.ANALYTICS_ENGINE.getCachedStats('execution');
+  const stats = window.ANALYTICS_ENGINE.getCachedStats(analyticsPopulation);
   if (!stats || !stats.updatedAt) {
-    window.ANALYTICS_ENGINE.computeRollingStats(false, 'execution').then(() => {
+    window.ANALYTICS_ENGINE.computeRollingStats(false, analyticsPopulation).then(() => {
       if (analyticsView === 'audit') renderAnalytics();
     });
     return '<div class="text-center text-muted p-20">⏳ Đang tính dữ liệu audit...</div>';
@@ -212,7 +212,7 @@ function renderAuditView() {
   const configHtml = `
     <div class="card mb-20" style="border-left: 4px solid var(--cyan)">
       <div class="card-title">⚙️ Active Hardening Config</div>
-      <div class="text-sm text-muted mb-12">Expectancy audit bên dưới chỉ tính execution-approved outcomes và loại trừ portfolio-bound/carryover để giữ edge sạch.</div>
+      <div class="text-sm text-muted mb-12">Expectancy audit bên dưới chỉ tính ${analyticsPopulationLabel()} outcomes và loại trừ portfolio-bound/carryover để giữ edge sạch.</div>
       <div style="display:flex; gap:12px; flex-wrap:wrap">
         ${renderConfigTag(cfg.execution?.READY_SCORE, 'READY Score')}
         ${renderConfigTag(cfg.execution?.READY_CONF, 'READY Conf')}
