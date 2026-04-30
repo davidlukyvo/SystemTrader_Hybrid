@@ -4,13 +4,13 @@ async function renderSignals() {
   if (!el) return;
   el.innerHTML = `
     <div class="page-header">
-      <div class="page-title">🧠 Signal History</div>
-      <div class="page-sub">Best of both: signal browser + checkpoint outcomes + backup tools</div>
+      <div class="page-title">🧠 Signal Audit History</div>
+      <div class="page-sub">Signal browser + checkpoint snapshot outcomes + backup tools</div>
     </div>
     <div class="card"><div class="text-sm text-muted">Đang tải signal history...</div></div>`;
 
   if (!window.DB) {
-    el.innerHTML = `<div class="page-header"><div class="page-title">🧠 Signal History</div></div><div class="card"><div class="text-sm text-muted">IndexedDB chưa sẵn sàng.</div></div>`;
+    el.innerHTML = `<div class="page-header"><div class="page-title">🧠 Signal Audit History</div></div><div class="card"><div class="text-sm text-muted">IndexedDB chưa sẵn sàng.</div></div>`;
     return;
   }
 
@@ -77,8 +77,16 @@ async function renderSignals() {
 
   el.innerHTML = `
   <div class="page-header">
-    <div class="page-title">🧠 Signal History</div>
-    <div class="page-sub">Persistent Edge Engine · signal history + scan diagnostics + checkpoint outcomes</div>
+    <div class="page-title">🧠 Signal Audit History</div>
+    <div class="page-sub">Persistent Edge Engine · signal audit + scan diagnostics + checkpoint snapshot outcomes</div>
+  </div>
+
+  <div class="card mb-20" style="border-color:rgba(0,229,255,0.22);background:rgba(0,229,255,0.035)">
+    <div class="text-sm fw-700">📌 Cách đọc nhanh</div>
+    <div class="text-xs text-muted" style="margin-top:6px;line-height:1.6">
+      Đây là lịch sử audit signal scanner, không phải sổ lệnh thật. D1/D3/D7/D14/D30 là checkpoint snapshot tại lúc evaluator chạy;
+      không phải full price-path replay hay PnL đã khớp lệnh qua API.
+    </div>
   </div>
 
   <div class="card mb-20">
@@ -166,6 +174,12 @@ function renderSignalRow(sig, outcomeMap) {
   const triggerLabel = typeof window.getEntryTriggerLabel === 'function'
     ? window.getEntryTriggerLabel(sig)
     : String(sig.entrySignal || sig.entryTiming || 'wait');
+  const btcBadge = sig.btcContext
+    ? `<span class="badge badge-gray">BTC: ${escapeHtml(sig.btcContext)}</span>`
+    : '';
+  const waitExecutionNote = ['READY','PLAYABLE','PROBE'].includes(displayStatus) && String(triggerLabel || '').toLowerCase() === 'wait'
+    ? `<div class="text-xs text-muted" style="margin-top:6px;color:var(--yellow)">⚠ Approved/monitored setup, but trigger is still wait — manual chart confirmation required.</div>`
+    : '';
   return `
     <div style="padding:12px;border-radius:10px;background:var(--bg-hover);border:1px solid var(--border)">
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap">
@@ -175,24 +189,26 @@ function renderSignalRow(sig, outcomeMap) {
             <span class="badge ${statusCls}">${escapeHtml(displayStatus)}</span>
             <span class="badge badge-gray">${escapeHtml(setupLabel || 'unknown')}</span>
             <span class="badge badge-cyan">score ${Math.round(Number(sig.score || 0))}</span>
-            <span class="badge badge-gray">${escapeHtml(sig.btcContext || 'unknown')}</span>
+            ${btcBadge}
           </div>
           <div class="text-xs text-muted" style="margin-top:6px">${formatTimestamp(sig.timestamp)} · trigger ${escapeHtml(triggerLabel)} · entry ${fmtNullablePrice(sig.entry)} · stop ${fmtNullablePrice(sig.stop)} · tp1 ${fmtNullablePrice(sig.tp1)} · tp2 ${fmtNullablePrice(sig.tp2)}</div>
           <div class="text-xs text-muted" style="margin-top:6px">riskAdj ${Math.round(Number(sig.riskAdjustedScore || 0))} · edge ${Math.round(Number(sig.edgeScore || 0))} · RR ${Number(sig.rr || 0).toFixed(2)}x</div>
+          ${waitExecutionNote}
         </div>
         <div style="min-width:240px;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;align-items:center">
           <button class="btn btn-outline btn-sm" style="padding:4px 8px; font-size:12px; border-radius:6px" 
                   title="Manual Refetch Outcome" 
-                  onclick="manualPerformSingleEval('${sig.id}')">⟳</button>
+                  onclick="manualPerformSingleEval('${sig.id}', this)">⟳</button>
           ${['D1','D3','D7','D14','D30'].map(h => renderOutcomeBadge(outcomeMap.get(`${sig.id}__${h}`), h)).join('')}
         </div>
       </div>
       ${outcomes.length ? `<div class="grid-4 gap-8" style="margin-top:10px">
-        ${signalStat('Best %', `${bestOutcome(outcomes,'pctChange')}%`, true)}
-        ${signalStat('Best R', `${bestOutcome(outcomes,'actualR')}R`, true)}
-        ${signalStat('TP1 Hits', String(outcomes.filter(x=>x.hitTp1).length), true)}
-        ${signalStat('TP2 Hits', String(outcomes.filter(x=>x.hitTp2).length), true)}
-      </div>` : '<div class="text-xs text-muted" style="margin-top:10px">Outcome chưa tới checkpoint hoặc chưa fetch được giá checkpoint.</div>'}
+        ${signalStat('Best Checkpoint %', `${bestOutcome(outcomes,'pctChange')}%`, true)}
+        ${signalStat('Best Checkpoint R', `${bestOutcome(outcomes,'actualR')}R`, true)}
+        ${signalStat('Checkpoint TP1 Hits', String(outcomes.filter(x=>x.hitTp1).length), true)}
+        ${signalStat('Checkpoint TP2 Hits', String(outcomes.filter(x=>x.hitTp2).length), true)}
+      </div>
+      <div class="text-xs text-muted" style="margin-top:8px">Snapshot-only audit: TP/stop hits mean price was beyond that level at a checkpoint, not necessarily intra-period path replay.</div>` : '<div class="text-xs text-muted" style="margin-top:10px">Outcome chưa tới checkpoint hoặc chưa fetch được giá checkpoint.</div>'}
     </div>`;
 }
 
@@ -227,12 +243,13 @@ async function refreshSignalHistoryPage() {
   return renderSignals();
 }
 
-async function manualPerformSingleEval(signalId) {
+async function manualPerformSingleEval(signalId, buttonEl) {
   if (!window.OUTCOME_EVAL?.triggerSingleEvaluation) {
     alert('Outcome engine not ready');
     return;
   }
-  const btn = event.currentTarget;
+  const btn = buttonEl || event?.currentTarget;
+  if (!btn) return;
   const original = btn.innerText;
   btn.innerText = '...';
   btn.disabled = true;

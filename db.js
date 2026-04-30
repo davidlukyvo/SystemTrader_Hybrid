@@ -1271,6 +1271,7 @@ window.DB = (() => {
     addSignals,
     addScanWithSignalsAtomic,
     getSignals,
+    getSignal: getSignalById,
     getSignalById,
     updateSignal,
     getUnevaluatedSignals,

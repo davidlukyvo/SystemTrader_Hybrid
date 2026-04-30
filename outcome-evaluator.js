@@ -405,7 +405,9 @@ window.OUTCOME_EVAL = (() => {
   async function triggerSingleEvaluation(signalId) {
     if (!signalId || !window.DB) return { success: false, error: 'Missing reqs' };
     try {
-      const signal = await DB.getSignal(signalId);
+      const signal = typeof DB.getSignalById === 'function'
+        ? await DB.getSignalById(signalId)
+        : await DB.getSignal(signalId);
       if (!signal) throw new Error('Signal not found');
       
       console.log(`[OUTCOME] Manual evaluation triggered for ${signal.symbol}`);

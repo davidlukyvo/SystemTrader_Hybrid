@@ -4,8 +4,18 @@ let activeModel = 'spring';
 function renderModels() {
   $('page-models').innerHTML = `
   <div class="page-header">
-    <div class="page-title">📐 Entry Models</div>
-    <div class="page-sub">3 mẫu vào lệnh chuẩn theo hệ thống Wyckoff/VSA</div>
+    <div class="page-title">📐 Entry Models Playbook</div>
+    <div class="page-sub">3 mẫu tham chiếu Wyckoff/VSA — scanner tự detect, tab này không đổi trading logic</div>
+  </div>
+
+  <div class="card mb-16" style="border-color:rgba(245,158,11,.28);background:rgba(245,158,11,.045)">
+    <div class="text-sm fw-700">📌 Playbook only</div>
+    <div class="text-xs text-muted" style="margin-top:6px;line-height:1.6">
+      Trang này dùng để học và audit setup thủ công. Bấm tab chỉ đổi nội dung hướng dẫn;
+      không chọn strategy mode, không đổi Alpha Guard, không đổi threshold, không đổi Telegram eligibility.
+      Scanner vẫn tự nhận diện trigger/model từ dữ liệu chart như <span class="mono">miniSpring</span>,
+      <span class="mono">lps15m</span>, <span class="mono">reclaimBreak</span>, và <span class="mono">breakoutRetest15m</span>.
+    </div>
   </div>
 
   <div class="model-tab-row">
