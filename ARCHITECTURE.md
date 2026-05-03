@@ -73,12 +73,25 @@ High-level order:
 4. market/scanner modules: `binance-market-data.js`, `native-momentum.js`, `scanner-universe.js`, `scanner-analysis.js`, `scanner-refinement.js`, `scanner-persistence.js`, `live-scanner.js`
 5. outcome/learning/ranking: `outcome-evaluator.js`, `learning-engine.js`, `outcome-linker.js`, `edge-adapter.js`, `pro-edge.js`
 6. capital/regime/authority: `capital-flow.js`, `capital-engine.js`, `market-insight.js`, `regime-engine.js`, `outcome-engine.js`, `promotion-engine.js`, `alpha-guard-core-v51-auth.js`
-7. observe-only enrichment: `market-behavior-engine.js`
+7. observe-only enrichment: `market-behavior-engine.js`, `agent-review-engine.js`
 8. display/alerts/audit: `execution-sync.js`, `telegram.js`, `alert-engine.js`, `runtime-audit.js`
 9. UI pages: `pages/dashboard.js`, `pages/scanner.js`, `pages/scorer.js`, `pages/models.js`, `pages/analytics.js`, and other page modules
 10. boot: `app.js`
 
-Runtime note: `scanner-persistence.js` loads before `market-behavior-engine.js`, but MBE is called only inside `live-scanner.js` after Alpha Guard authority merge and after `deployableTop3` is frozen. `runtime-audit.js` loads after `alert-engine.js` and before main page consumers.
+Runtime note: `scanner-persistence.js` loads before observe-only enrichment engines, but MBE and Agentic Review are called only inside `live-scanner.js` after Alpha Guard authority merge and after `deployableTop3` is frozen. `runtime-audit.js` loads after `alert-engine.js` and before main page consumers.
+
+## Agentic Review Layer (Phase 1 — Observe Only)
+
+`agent-review-engine.js` generates deterministic structured review memos on persisted signal records. It simulates review sections (technical summary, behavior evidence summary, bull case, bear case, risk review, final operator note) using existing runtime fields only.
+
+Hard contract:
+
+- No external LLM calls in Phase 1.
+- No autonomous trading or execution authority.
+- `agentReview.decisionImpact` is always `none`.
+- Does not change `displayStatus`, `finalAuthorityStatus`, `authorityDecision`, `deployableTop3`, `executionGatePassed`, capital policy, portfolio policy, or Telegram eligibility.
+- Runs after Market Behavior Evidence so it can explain behavior fields, but both layers remain observe-only.
+- Guaranteed on persisted signal records after a fresh scan/export. It is not guaranteed on frozen `deployableTop3` snapshots because those are intentionally derived before observe-only enrichment.
 
 ## Signal Lifecycle
 
@@ -360,6 +373,7 @@ Four fields on persisted scan records describe qualification counts. They have *
 | `technicalTop3` | Technical shortlist before final authority / capital suppression when explicitly passed. If not passed, it currently falls back to legacy `top3`, which can be misleading on actionable-no-ready scans. | Intended technical shortlist | `scanner-persistence.js` |
 | `deployableTop3` | **Deployable shortlist across READY / PLAYABLE / PROBE** (up to 3 coins) | READY + PLAYABLE + PROBE | `scanner-refinement.js → isFinalDeployableCoin` |
 | `behaviorEvidence` | Observe-only evidence fields on persisted signal records. Never an authority source and never used for Telegram eligibility. | Persisted signals only | `market-behavior-engine.js` |
+| `agentReview` | Deterministic observe-only explainability memo. `decisionImpact` must always be `none`; never an authority source and never used for Telegram eligibility. | Persisted signals only | `agent-review-engine.js` |
 | `executionQualifiedCount` | **READY-tier qualified count only** — how many coins reached the strictest authority tier | READY only | `scanner-persistence.js (eb_ready)` |
 | `qualifiedCount` | Deprecated alias for `executionQualifiedCount`. Always identical. Do not read separately. | READY only | `db.js normalizeScanRecord` |
 | `qualifiedCoins` | Array of READY-tier coin symbols (strings, not objects) | READY only | `scanner-persistence.js (eb_ready filter)` |

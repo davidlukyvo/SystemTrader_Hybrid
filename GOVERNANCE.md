@@ -12,6 +12,7 @@ Safe changes:
 - typo / wording fixes
 - UI wording and visual clarity that do not change decision logic
 - trace, audit, and logging improvements
+- observe-only explainability layers whose `decisionImpact` is hard-coded to `none`
 - bug fixes that preserve existing authority semantics
 - persistence integrity fixes
 - validation harness coverage
@@ -28,6 +29,7 @@ Ask for explicit approval before changing:
 - momentum or telemetry influence on decision quality
 - capital sizing, exposure caps, cooldowns, daily limits, or portfolio vetoes
 - Telegram alert eligibility policy
+- any use of LLM output to influence ranking, authority, capital, portfolio, or Telegram eligibility
 - learning population policy
 - anything that makes execution easier or less restrictive
 

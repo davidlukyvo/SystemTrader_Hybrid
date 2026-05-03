@@ -142,6 +142,21 @@ window.LIVE_SCANNER = (() => {
       }
       // ─────────────────────────────────────────────────────────────────────
 
+      // ── Agentic Review Layer — observe-only (Phase 1) ────────────────────
+      // Deterministic structured explanation report; no LLM calls, no trading authority.
+      // AUTHORITY CONTRACT: agentReview.decisionImpact must remain "none" and must NOT
+      // change displayStatus, finalAuthorityStatus, authorityDecision, capital, portfolio,
+      // Telegram eligibility, or deployableTop3.
+      if (window.AGENT_REVIEW_ENGINE?.enrich) {
+        try {
+          enrichedCoins = enrichedCoins.map(coin => window.AGENT_REVIEW_ENGINE.enrich(coin, btcContext));
+          console.log('[AgentReview] Observe-only reviews attached for', enrichedCoins.length, 'coins');
+        } catch (agentReviewErr) {
+          console.warn('[AgentReview] Batch enrich failed — keeping prior enriched coins', agentReviewErr?.message);
+        }
+      }
+      // ─────────────────────────────────────────────────────────────────────
+
       const finalizedAt = Date.now();
 
       const sessionContext = {
@@ -155,8 +170,8 @@ window.LIVE_SCANNER = (() => {
         regime: window.ST?.scanMeta?.regime || {}
       };
 
-      // Persist enrichedCoins (with behavior fields).
-      // deployableTop3 in sessionContext is the pre-MBE authority snapshot.
+      // Persist enrichedCoins (with behavior + agentReview fields).
+      // deployableTop3 in sessionContext is the pre-MBE/pre-agent-review authority snapshot.
       await window.SCANNER_PERSISTENCE.finalizeScanSession(enrichedCoins, fetchFailedSymbols, sessionContext);
 
       const totalDuration = Date.now() - startedAt;

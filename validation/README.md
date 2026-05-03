@@ -12,6 +12,14 @@ From the project root:
 node .\validation\run-regression-harness.js
 ```
 
+Run the Phase 1.5 observe-only verification checklist:
+
+```powershell
+node .\validation\run-phase15-verification.js
+```
+
+For live browser fresh scan/export checks, follow `validation/PHASE_1_5_CHECKLIST.md`.
+
 Run the intentionally bad fixture to confirm the harness catches regressions:
 
 ```powershell
@@ -32,6 +40,7 @@ If `node` is not on `PATH`, use the full Node executable path.
 - sideway/CHOP loss-streak relaxation remaining narrow
 - soft PROBE bridge behavior remaining narrow
 - runtime audit blocker semantics
+- Phase 1.5 observe-only contracts for MBE pass-through, Agentic Review, Telegram invariance, stablecoin hygiene, and legacy scan rendering
 
 ## Terms Used By The Harness
 

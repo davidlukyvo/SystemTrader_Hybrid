@@ -77,6 +77,7 @@ There is no separate `project-brain` doc set by design. This file is the AI memo
 - Future market-data work should learn provider/session/cache patterns, not make unofficial TradingView sockets part of core authority.
 - `docs/archive/` is historical patch context only, not active runtime truth.
 - **Market Behavior Evidence (Phase 1)**: `market-behavior-engine.js` added as observe-only enrichment. Runs after `deployableTop3` is frozen, before persistence. Does NOT affect authority decisions, deployableTop3, Telegram, or capital/portfolio policy. Volume metrics are OHLCV approximations labeled `v1.0-ohlcv-approx`. See `docs/market-behavior-evidence.md`.
+- **Agentic Review Layer (Phase 1)**: `agent-review-engine.js` attaches deterministic structured review memos to persisted signals. No external LLM calls, no autonomous trading, no Telegram impact, and `agentReview.decisionImpact` must always be `none`.
 - **Self-hosted Ubuntu/Debian ops**: `docs/SELF_HOSTED_UBUNTU_DEBIAN_RUNBOOK.md` plus `ops/` define nginx static serving, supervised browser runtime, env-backed Telegram relay, health/backup timers, sanitized exports, and optional Phase 2 `systemtrader-runner.timer`. Local `python -m http.server` remains supported.
 - **Runtime audit blocker contract**: `blockerRanking` mirrors `primaryBlockers`; use `rawBlockers` for full low-level detail when investigating duplicated-looking reasons such as cooldown/capital guard.
 

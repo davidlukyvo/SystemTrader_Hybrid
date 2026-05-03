@@ -58,6 +58,7 @@ Use these fields consistently across code and docs:
 - `authoritativeTop3`: legacy compatibility mirror of `deployableTop3`
 - `learningPool`: `execution`, `near_approved`, or `excluded`
 - `behaviorEvidence`: observe-only market behavior evidence on persisted signals; never an authority source
+- `agentReview`: observe-only deterministic review memo guaranteed on persisted signals after a fresh scan/export; `decisionImpact` is always `none`. Frozen `deployableTop3` snapshots may not carry `agentReview` because they are derived before observe-only enrichment.
 
 Do not infer tradability from scanner-only fields such as `proposedStatus`, `score`, `top3`, or `technicalTop3`.
 
@@ -72,8 +73,9 @@ Do not infer tradability from scanner-only fields such as `proposedStatus`, `sco
 7. `capital-engine.js` and `portfolio-engine.js` apply capital, exposure, global cooldown, same-symbol cooling, dedup, and risk vetoes.
 8. `scanner-refinement.js` merges authority truth back into each coin.
 9. `live-scanner.js` freezes `deployableTop3`, then `market-behavior-engine.js` enriches persisted signals observe-only.
-10. `scanner-persistence.js` saves the scan and patches `ST.scanMeta`.
-11. `pages/dashboard.js`, `pages/scanner.js`, `alert-engine.js`, and `runtime-audit.js` consume final truth.
+10. `agent-review-engine.js` attaches deterministic observe-only review memos; no LLM calls and no decision impact.
+11. `scanner-persistence.js` saves the scan and patches `ST.scanMeta`.
+12. `pages/dashboard.js`, `pages/scanner.js`, `alert-engine.js`, and `runtime-audit.js` consume final truth.
 
 ## Authority, Persistence, And Alerts
 

@@ -323,7 +323,16 @@ function renderScanSignalDetailContent(signals) {
     var cat = s.category || 'OTHER';
     var evaluated = Array.isArray(s.outcomesEvaluated) ? s.outcomesEvaluated : [];
     var hasBev = s.behaviorEvidence && typeof s.behaviorEvidence === 'object';
+    var hasAgentReview = s.agentReview && typeof s.agentReview === 'object';
     var bevId = 'bev-' + (s.id || s.symbol || Math.random().toString(36).slice(2, 8));
+    var arId = 'ar-' + (s.id || s.symbol || Math.random().toString(36).slice(2, 8));
+    var auditButtons = [];
+    if (hasBev) {
+      auditButtons.push('<button onclick="toggleBehaviorEvidence(\'' + bevId + '\')" title="Behavior Evidence (observe only)" style="background:none;border:1px solid rgba(0,229,255,0.3);border-radius:4px;cursor:pointer;color:var(--cyan);font-size:10px;padding:2px 5px">🔬</button>');
+    }
+    if (hasAgentReview) {
+      auditButtons.push('<button onclick="toggleAgentReview(\'' + arId + '\')" title="Agentic Review (deterministic observe only)" style="background:none;border:1px solid rgba(167,139,250,0.35);border-radius:4px;cursor:pointer;color:#a78bfa;font-size:10px;padding:2px 5px">🧠</button>');
+    }
 
     var signalRow = '<tr>' +
       '<td><span class="mono fw-700">' + s.symbol + '</span> ' + renderScanHistoryFreshnessBadge(s.symbol) + '</td>' +
@@ -336,9 +345,7 @@ function renderScanSignalDetailContent(signals) {
       '<td class="mono">' + fmtPrice(s.entry) + '</td>' +
       '<td class="text-xs">' + (s.entryTiming || '—') + '</td>' +
       '<td class="text-xs">' + (evaluated.length ? evaluated.join(', ') : '<span class="text-muted">pending</span>') + '</td>' +
-      '<td style="text-align:center">' + (hasBev
-        ? '<button onclick="toggleBehaviorEvidence(\'' + bevId + '\')" title="Behavior Evidence (observe only)" style="background:none;border:1px solid rgba(0,229,255,0.3);border-radius:4px;cursor:pointer;color:var(--cyan);font-size:10px;padding:2px 5px">🔬</button>'
-        : '<span class="text-muted" style="font-size:10px">—</span>') + '</td>' +
+      '<td style="text-align:center;display:flex;gap:4px;justify-content:center">' + (auditButtons.length ? auditButtons.join('') : '<span class="text-muted" style="font-size:10px">—</span>') + '</td>' +
       '</tr>';
 
     var bevRow = '';
@@ -377,14 +384,57 @@ function renderScanSignalDetailContent(signals) {
           '<div class="text-muted" style="font-size:10px">Version: ' + (s.behaviorEngineVersion || 'n/a') + '</div>' +
         '</div></td></tr>';
     }
-    return signalRow + bevRow;
+    var agentReviewRow = hasAgentReview ? renderAgentReviewPanelRow(s.agentReview, arId) : '';
+    return signalRow + bevRow + agentReviewRow;
   }).join('');
 
   detail.innerHTML = '<div class="card"><div class="card-title">Signals from scan (' + signals.length + ')</div>' + filterHtml +
     '<div style="overflow-x:auto"><table class="j-table"><thead><tr>' +
     '<th>Symbol</th><th>Category</th><th>Status</th><th>Setup</th><th>Score</th><th>RR</th><th>Conf</th><th>Entry</th><th>Timing</th><th>Outcomes</th>' +
-    '<th title="Market Behavior Evidence (observe only)">🔬</th>' +
+    '<th title="Observe-only audit panels: behavior evidence and agentic review">Audit</th>' +
     '</tr></thead><tbody>' + tableRows + '</tbody></table></div></div>';
+}
+
+function renderAgentReviewPanelRow(review, arId) {
+  var tech = review.technicalSummary || {};
+  var behavior = review.behaviorEvidenceSummary || {};
+  var risk = review.riskReview || {};
+  var integrity = review.sourceIntegrity || {};
+  var integrityItems = Object.keys(integrity).map(k => (integrity[k] ? '✅ ' : '⚠️ ') + k).join(' · ') || 'n/a';
+  var bull = Array.isArray(review.bullCase) ? review.bullCase : [];
+  var bear = Array.isArray(review.bearCase) ? review.bearCase : [];
+  var positives = Array.isArray(behavior.positiveFlags) ? behavior.positiveFlags.join(', ') : '—';
+  var risks = Array.isArray(behavior.riskFlags) ? behavior.riskFlags.join(', ') : '—';
+  var failures = Array.isArray(behavior.failureModeCandidate) ? behavior.failureModeCandidate.join(', ') : '—';
+  var capitalPlanNote = integrity.capitalPlanPresent === false
+    ? '<div class="text-muted" style="font-size:10px;margin-top:4px">Note: capitalPlanPresent may be false for non-actionable/rejected signals; this is expected.</div>'
+    : '';
+
+  function listHtml(items) {
+    return (items && items.length)
+      ? '<ul style="margin:4px 0 0 16px;padding:0">' + items.map(x => '<li>' + x + '</li>').join('') + '</ul>'
+      : '<span class="text-muted">none</span>';
+  }
+
+  return '<tr id="' + arId + '" style="display:none"><td colspan="11" style="padding:0 4px 8px">' +
+    '<div style="background:rgba(124,58,237,0.05);border:1px solid rgba(167,139,250,0.20);border-radius:6px;padding:10px 14px;font-size:11px;line-height:1.7">' +
+      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px">' +
+        '<span class="badge badge-purple">🧠 Agentic Review</span>' +
+        '<span class="text-muted" style="font-size:10px">Review only · deterministic · no LLM · no decision impact</span>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">' +
+        '<div><strong>Technical Summary</strong><div class="text-muted">Status ' + (tech.status || 'n/a') + ' · Decision ' + (tech.authorityDecision || 'n/a') + ' · RR ' + (tech.rr ?? '—') + ' · Conf ' + (tech.confidence || '—') + '</div><div>Setup: ' + (tech.setup || '—') + ' · Trigger: ' + (tech.trigger || '—') + '</div><div>Reason: ' + (tech.authorityReason || '—') + '</div></div>' +
+        '<div><strong>Behavior Evidence</strong><div>Positive: <span style="color:var(--cyan)">' + (positives || 'none') + '</span></div><div>Risk: <span style="color:var(--yellow)">' + (risks || 'none') + '</span></div><div>Failures: <strong>' + (failures || 'none') + '</strong></div></div>' +
+        '<div><strong>Risk Review</strong><div>Aggressive: ' + (risk.aggressive || '—') + '</div><div>Neutral: ' + (risk.neutral || '—') + '</div><div>Conservative: ' + (risk.conservative || '—') + '</div></div>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin-top:8px">' +
+        '<div><strong>Bull Case</strong>' + listHtml(bull) + '</div>' +
+        '<div><strong>Bear Case</strong>' + listHtml(bear) + '</div>' +
+      '</div>' +
+      '<div style="margin-top:8px"><strong>Final Operator Note:</strong> ' + (review.finalOperatorNote || 'Review-only memo generated from runtime data.') + '</div>' +
+      '<div class="text-muted" style="font-size:10px;margin-top:6px">Source Integrity: ' + integrityItems + ' · Version: ' + (review.version || 'n/a') + '</div>' +
+      capitalPlanNote +
+    '</div></td></tr>';
 }
 
 function filterScanSignalsByCategory(category) {
@@ -395,6 +445,11 @@ function filterScanSignalsByCategory(category) {
 // Toggle behavior evidence panel (observe-only display)
 function toggleBehaviorEvidence(bevId) {
   var el = document.getElementById(bevId);
+  if (el) el.style.display = el.style.display === 'none' ? 'table-row' : 'none';
+}
+
+function toggleAgentReview(arId) {
+  var el = document.getElementById(arId);
   if (el) el.style.display = el.style.display === 'none' ? 'table-row' : 'none';
 }
 
