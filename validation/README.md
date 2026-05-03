@@ -18,6 +18,12 @@ Run the Phase 1.5 observe-only verification checklist:
 node .\validation\run-phase15-verification.js
 ```
 
+Run the Phase 1.6 scheduler jitter verification:
+
+```powershell
+node .\validation\run-phase16-scheduler-verification.js
+```
+
 For live browser fresh scan/export checks, follow `validation/PHASE_1_5_CHECKLIST.md`.
 
 Run the intentionally bad fixture to confirm the harness catches regressions:
@@ -41,6 +47,7 @@ If `node` is not on `PATH`, use the full Node executable path.
 - soft PROBE bridge behavior remaining narrow
 - runtime audit blocker semantics
 - Phase 1.5 observe-only contracts for MBE pass-through, Agentic Review, Telegram invariance, stablecoin hygiene, and legacy scan rendering
+- Phase 1.6 scheduler jitter timing-only behavior and scan-lock delay semantics
 
 ## Terms Used By The Harness
 

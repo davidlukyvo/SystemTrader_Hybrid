@@ -80,6 +80,14 @@ High-level order:
 
 Runtime note: `scanner-persistence.js` loads before observe-only enrichment engines, but MBE and Agentic Review are called only inside `live-scanner.js` after Alpha Guard authority merge and after `deployableTop3` is frozen. `runtime-audit.js` loads after `alert-engine.js` and before main page consumers.
 
+## Scheduler Jitter Mode (Ops / Sampling Only)
+
+`app.js → SMART_SCAN` owns automatic scan timing. Existing fixed schedule mode remains supported. Optional `schedulerMode='jitter'` schedules each configured base scan time with a random delay between `jitterMinMinutes` and `jitterMaxMinutes` (default suggestion `3–18`) and enforces `minGapMinutes` between scans.
+
+Persisted scheduler audit fields include `nextAutoScanAt`, `lastAutoRunAt`, `lastAutoRunKey`, `lastBaseTime`, `lastBaseTimeAt`, `lastJitterMinutes`, `lastScheduledRunAt`, and `lastActualRunAt`. Runtime logs include base time, jitter minutes, scheduled run time, and actual run time.
+
+This mode changes sampling time only. It is not a trading edge and must not change Alpha Guard, thresholds, `authorityDecision`, `finalAuthorityStatus`, `executionGatePassed`, capital policy, portfolio policy, Telegram eligibility, or `deployableTop3`.
+
 ## Agentic Review Layer (Phase 1 — Observe Only)
 
 `agent-review-engine.js` generates deterministic structured review memos on persisted signal records. It simulates review sections (technical summary, behavior evidence summary, bull case, bear case, risk review, final operator note) using existing runtime fields only.

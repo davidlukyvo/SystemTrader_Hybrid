@@ -77,6 +77,17 @@ Do not infer tradability from scanner-only fields such as `proposedStatus`, `sco
 11. `scanner-persistence.js` saves the scan and patches `ST.scanMeta`.
 12. `pages/dashboard.js`, `pages/scanner.js`, `alert-engine.js`, and `runtime-audit.js` consume final truth.
 
+## Scheduler Jitter Mode
+
+`app.js → SMART_SCAN` owns browser scheduler timing. It supports:
+
+- `fixed`: existing exact configured scan times.
+- `jitter`: optional randomized delay after each configured base scan time.
+
+Jitter mode is an ops/sampling feature only. It adds a random delay between `jitterMinMinutes` and `jitterMaxMinutes` (default suggestion `3–18`) and enforces `minGapMinutes` between scans. It persists audit fields such as `nextAutoScanAt`, `lastAutoRunAt`, `schedulerMode`, `lastBaseTime`, `lastJitterMinutes`, `lastScheduledRunAt`, and `lastActualRunAt`.
+
+Randomization affects scan timing only. It must not change Alpha Guard, thresholds, authority, capital, portfolio, Telegram eligibility, or `deployableTop3`.
+
 ## Authority, Persistence, And Alerts
 
 Authority:

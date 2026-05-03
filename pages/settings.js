@@ -4,7 +4,7 @@ function renderSettings() {
   const pageEl = $('page-settings');
   if (!pageEl) return;
 
-  const scheduler = ST.scanMeta?.scheduler || { enabled: false, hours: [8, 17, 21] };
+  const scheduler = ST.scanMeta?.scheduler || { enabled: false, hours: [8, 17, 21], schedulerMode: 'fixed', jitterMinMinutes: 3, jitterMaxMinutes: 18, minGapMinutes: 20 };
   const tg = window.Telegram?.getConfig ? window.Telegram.getConfig() : { enabled: false, botToken: '', chatId: '' };
 
   pageEl.innerHTML = `
@@ -54,10 +54,33 @@ function renderSettings() {
 
           <div class="field-label">Scan Times (HH:MM, 24h format, comma separated)</div>
           <input type="text" id="scanHours" class="input-dark w-100 mb-12" value="${(scheduler.hours || []).join(', ')}" placeholder="06:00, 10:30, 21:00, 00:00">
+
+          <div class="field-label">Scheduler Mode</div>
+          <select id="schedulerMode" class="input-dark w-100 mb-12">
+            <option value="fixed" ${String(scheduler.schedulerMode || scheduler.mode || 'fixed') === 'fixed' ? 'selected' : ''}>Fixed schedule</option>
+            <option value="jitter" ${String(scheduler.schedulerMode || scheduler.mode || 'fixed') === 'jitter' ? 'selected' : ''}>Jitter mode (randomized delay)</option>
+          </select>
+
+          <div style="display:grid;grid-template-columns:repeat(3,minmax(80px,1fr));gap:8px;margin-bottom:12px">
+            <div>
+              <div class="field-label">Jitter Min</div>
+              <input type="number" id="jitterMinMinutes" class="input-dark w-100" min="0" max="120" value="${Number(scheduler.jitterMinMinutes ?? 3)}">
+            </div>
+            <div>
+              <div class="field-label">Jitter Max</div>
+              <input type="number" id="jitterMaxMinutes" class="input-dark w-100" min="0" max="180" value="${Number(scheduler.jitterMaxMinutes ?? 18)}">
+            </div>
+            <div>
+              <div class="field-label">Min Gap</div>
+              <input type="number" id="schedulerMinGapMinutes" class="input-dark w-100" min="1" max="240" value="${Number(scheduler.minGapMinutes ?? 20)}">
+            </div>
+          </div>
           
           <div class="text-xs text-muted mb-16" style="display:flex;flex-direction:column;gap:4px">
             <div>Next scheduled run: <span class="fw-700 text-cyan">${window.SMART_SCAN?.nextRunLabel ? window.SMART_SCAN.nextRunLabel() : 'OFF'}</span></div>
             <div>Last successful run: <span class="fw-700 text-muted">${window.SMART_SCAN?.lastRunLabel ? window.SMART_SCAN.lastRunLabel() : 'None'}</span></div>
+            <div>Audit: mode <span class="fw-700">${scheduler.schedulerMode || scheduler.mode || 'fixed'}</span> · last jitter <span class="fw-700">${scheduler.lastJitterMinutes ?? 'n/a'}m</span> · nextAutoScanAt <span class="fw-700">${scheduler.nextAutoScanAt ? new Date(Number(scheduler.nextAutoScanAt)).toLocaleString() : 'n/a'}</span></div>
+            <div>Jitter changes scan timing only. It does not change Alpha Guard, thresholds, capital, portfolio, Telegram eligibility, or deployableTop3.</div>
           </div>
 
           <button class="btn btn-sm btn-primary" onclick="saveSchedulerSettings()">Update Schedule</button>
@@ -218,7 +241,12 @@ function saveSchedulerSettings() {
     return;
   }
 
-  window.SMART_SCAN.setConfig({ hours: validated });
+  const schedulerMode = String($('schedulerMode')?.value || 'fixed').toLowerCase() === 'jitter' ? 'jitter' : 'fixed';
+  let jitterMinMinutes = Math.max(0, Math.round(Number($('jitterMinMinutes')?.value ?? 3)));
+  let jitterMaxMinutes = Math.max(0, Math.round(Number($('jitterMaxMinutes')?.value ?? 18)));
+  if (jitterMaxMinutes < jitterMinMinutes) [jitterMinMinutes, jitterMaxMinutes] = [jitterMaxMinutes, jitterMinMinutes];
+  const minGapMinutes = Math.max(1, Math.round(Number($('schedulerMinGapMinutes')?.value ?? 20)));
+  window.SMART_SCAN.setConfig({ hours: validated, schedulerMode, mode: schedulerMode, jitterMinMinutes, jitterMaxMinutes, minGapMinutes });
   showToast('Scan schedule updated & normalized');
   renderSettings();
 }

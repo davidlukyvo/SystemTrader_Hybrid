@@ -40,7 +40,8 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[Manual scan or scheduler] --> B[live-scanner.run]
+    A[Manual scan or scheduler] --> SJ["Scheduler fixed/jitter timing&#10;ops sampling only"]
+    SJ --> B[live-scanner.run]
     B --> C[Detect BTC context]
     C --> D[Build Binance universe]
     D --> E[Apply hygiene and liquidity filters]
@@ -58,6 +59,8 @@ flowchart TD
     M --> O[Runtime audit]
     M --> P[Learning / Telegram]
 ```
+
+Scheduler jitter randomizes only the time a scan starts. It does not change scanner scoring, Alpha Guard, thresholds, authority, capital, portfolio, Telegram eligibility, or `deployableTop3`.
 
 ## Decision Brain
 

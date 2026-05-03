@@ -46,6 +46,52 @@ function sanitizeSchedulerHours(value) {
   return times.length ? times : defaults;
 }
 
+function sanitizeSchedulerConfig(value) {
+  const defaults = {
+    enabled: false,
+    hours: ['06:00', '07:00', '08:00', '09:00', '10:30', '14:30', '17:00', '21:00', '23:00', '00:00'],
+    schedulerMode: 'fixed',
+    jitterMinMinutes: 3,
+    jitterMaxMinutes: 18,
+    minGapMinutes: 20,
+    nextAutoScanAt: 0,
+    lastAutoRunAt: 0,
+    lastAutoRunKey: '',
+    lastAutoRunHourKey: '',
+    lastBaseTime: '',
+    lastBaseTimeAt: 0,
+    lastJitterMinutes: null,
+    lastScheduledRunAt: 0,
+    lastActualRunAt: 0,
+  };
+  const cfg = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const mode = String(cfg.schedulerMode || cfg.mode || defaults.schedulerMode).toLowerCase() === 'jitter' ? 'jitter' : 'fixed';
+  let jitterMin = Math.max(0, Math.round(Number(cfg.jitterMinMinutes ?? defaults.jitterMinMinutes)));
+  let jitterMax = Math.max(0, Math.round(Number(cfg.jitterMaxMinutes ?? defaults.jitterMaxMinutes)));
+  if (jitterMax < jitterMin) [jitterMin, jitterMax] = [jitterMax, jitterMin];
+  const minGap = Math.max(1, Math.round(Number(cfg.minGapMinutes ?? defaults.minGapMinutes)));
+  return {
+    ...defaults,
+    ...cfg,
+    enabled: !!cfg.enabled,
+    hours: sanitizeSchedulerHours(cfg.hours),
+    schedulerMode: mode,
+    mode,
+    jitterMinMinutes: jitterMin,
+    jitterMaxMinutes: jitterMax,
+    minGapMinutes: minGap,
+    nextAutoScanAt: Number(cfg.nextAutoScanAt || 0),
+    lastAutoRunAt: Number(cfg.lastAutoRunAt || 0),
+    lastAutoRunKey: String(cfg.lastAutoRunKey || cfg.lastAutoRunHourKey || ''),
+    lastAutoRunHourKey: String(cfg.lastAutoRunHourKey || cfg.lastAutoRunKey || ''),
+    lastBaseTime: String(cfg.lastBaseTime || ''),
+    lastBaseTimeAt: Number(cfg.lastBaseTimeAt || 0),
+    lastJitterMinutes: cfg.lastJitterMinutes == null ? null : Number(cfg.lastJitterMinutes),
+    lastScheduledRunAt: Number(cfg.lastScheduledRunAt || 0),
+    lastActualRunAt: Number(cfg.lastActualRunAt || cfg.lastAutoRunAt || 0),
+  };
+}
+
 function sanitizeJournal(value) {
   if (Array.isArray(value)) return value;
   if (value && typeof value === 'object') {
@@ -56,7 +102,7 @@ function sanitizeJournal(value) {
 }
 
 function sanitizeScanMeta(value) {
-  const base = { lastScan: null, lastScanId: '', lastScanTs: 0, source: '', coins: [], top3: [], technicalTop3: [], deployableTop3: [], authoritativeTop3: [], authoritativeTop3Legacy: false, cache: {}, regime: {}, insight: {}, scheduler: { enabled: false, hours: ['06:00', '07:00', '08:00', '09:00', '10:30', '14:30', '17:00', '21:00', '23:00', '00:00'], lastAutoRunAt: 0, lastAutoRunHourKey: '' }, lastScanSource: '', lastScanTrigger: '' };
+  const base = { lastScan: null, lastScanId: '', lastScanTs: 0, source: '', coins: [], top3: [], technicalTop3: [], deployableTop3: [], authoritativeTop3: [], authoritativeTop3Legacy: false, cache: {}, regime: {}, insight: {}, scheduler: sanitizeSchedulerConfig(null), lastScanSource: '', lastScanTrigger: '' };
   if (!value || typeof value !== 'object' || Array.isArray(value)) return base;
   const deployableTop3 = Array.isArray(value.deployableTop3) ? value.deployableTop3 : [];
   const authoritativeTop3 = Array.isArray(value.authoritativeTop3) ? value.authoritativeTop3 : deployableTop3;
@@ -78,7 +124,7 @@ function sanitizeScanMeta(value) {
     cache: value.cache && typeof value.cache === 'object' && !Array.isArray(value.cache) ? value.cache : {},
     regime: value.regime && typeof value.regime === 'object' && !Array.isArray(value.regime) ? value.regime : {},
     insight: value.insight && typeof value.insight === 'object' && !Array.isArray(value.insight) ? value.insight : {},
-    scheduler: value.scheduler && typeof value.scheduler === 'object' && !Array.isArray(value.scheduler) ? { enabled: !!value.scheduler.enabled, hours: sanitizeSchedulerHours(value.scheduler.hours), lastAutoRunAt: Number(value.scheduler.lastAutoRunAt || 0), lastAutoRunHourKey: String(value.scheduler.lastAutoRunHourKey || '') } : { enabled: false, hours: ['06:00', '07:00', '08:00', '09:00', '10:30', '14:30', '17:00', '21:00', '23:00', '00:00'], lastAutoRunAt: 0, lastAutoRunHourKey: '' },
+    scheduler: sanitizeSchedulerConfig(value.scheduler),
     lastScanSource: String(value.lastScanSource || ''),
     lastScanTrigger: String(value.lastScanTrigger || '')
   };
@@ -93,7 +139,7 @@ window.ST = {
   strategic: null, // v10.6.9 Strategic Hub (Rainbow + Sentiment + Dom)
   watchlist: { best: [], watch: [], avoid: [] },
   journal: [],
-  scanMeta: { lastScan: null, source: '', top3: [], technicalTop3: [], deployableTop3: [], cache: {}, regime: {}, insight: {}, scheduler: { enabled: false, hours: ['06:00', '07:00', '08:00', '09:00', '10:30', '14:30', '17:00', '21:00', '23:00', '00:00'], lastAutoRunAt: 0, lastAutoRunHourKey: '' }, lastScanSource: '', lastScanTrigger: '' },
+  scanMeta: { lastScan: null, source: '', top3: [], technicalTop3: [], deployableTop3: [], cache: {}, regime: {}, insight: {}, scheduler: sanitizeSchedulerConfig(null), lastScanSource: '', lastScanTrigger: '' },
 
   /* v10.6.9.26: Hardening Configuration — non-rigid, configurable gates */
   config: {

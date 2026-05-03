@@ -13,6 +13,7 @@ Safe changes:
 - UI wording and visual clarity that do not change decision logic
 - trace, audit, and logging improvements
 - observe-only explainability layers whose `decisionImpact` is hard-coded to `none`
+- scheduler jitter / scan sampling changes that affect timing only and do not alter candidate scoring, authority, capital, portfolio, Telegram eligibility, or deployable shortlist semantics
 - bug fixes that preserve existing authority semantics
 - persistence integrity fixes
 - validation harness coverage
@@ -30,6 +31,7 @@ Ask for explicit approval before changing:
 - capital sizing, exposure caps, cooldowns, daily limits, or portfolio vetoes
 - Telegram alert eligibility policy
 - any use of LLM output to influence ranking, authority, capital, portfolio, or Telegram eligibility
+- any scheduler randomization that changes scan inputs after sampling time, ranking, gate thresholds, alert eligibility, or trade execution behavior
 - learning population policy
 - anything that makes execution easier or less restrictive
 

@@ -257,32 +257,138 @@ window.filterScannerByTier = function(tier) {
 window.SMART_SCAN = (() => {
   let running = false;
   let timer = null;
+  const DEFAULT_HOURS = ['06:00', '07:00', '08:00', '09:00', '10:30', '17:00', '21:00', '23:00', '00:00'];
+  const MINUTE = 60 * 1000;
 
-  function getScheduler() {
-    const cfg = ST.scanMeta?.scheduler || {};
-    const defaults = ['06:00', '07:00', '08:00', '09:00', '10:30', '17:00', '21:00', '23:00', '00:00'];
-    return { 
-      enabled: !!cfg.enabled, 
-      hours: Array.isArray(cfg.hours) && cfg.hours.length ? cfg.hours : defaults
+  function normalizeScheduler(raw = {}) {
+    const hours = Array.isArray(raw.hours) && raw.hours.length ? raw.hours : DEFAULT_HOURS;
+    const schedulerMode = String(raw.schedulerMode || raw.mode || 'fixed').toLowerCase() === 'jitter' ? 'jitter' : 'fixed';
+    let jitterMinMinutes = Math.max(0, Math.round(Number(raw.jitterMinMinutes ?? 3)));
+    let jitterMaxMinutes = Math.max(0, Math.round(Number(raw.jitterMaxMinutes ?? 18)));
+    if (jitterMaxMinutes < jitterMinMinutes) [jitterMinMinutes, jitterMaxMinutes] = [jitterMaxMinutes, jitterMinMinutes];
+    const minGapMinutes = Math.max(1, Math.round(Number(raw.minGapMinutes ?? 20)));
+    return {
+      ...raw,
+      enabled: !!raw.enabled,
+      hours,
+      schedulerMode,
+      mode: schedulerMode,
+      jitterMinMinutes,
+      jitterMaxMinutes,
+      minGapMinutes,
+      nextAutoScanAt: Number(raw.nextAutoScanAt || 0),
+      lastAutoRunAt: Number(raw.lastAutoRunAt || 0),
+      lastAutoRunKey: String(raw.lastAutoRunKey || raw.lastAutoRunHourKey || ''),
+      lastAutoRunHourKey: String(raw.lastAutoRunHourKey || raw.lastAutoRunKey || ''),
+      lastBaseTime: String(raw.lastBaseTime || ''),
+      lastBaseTimeAt: Number(raw.lastBaseTimeAt || 0),
+      lastJitterMinutes: raw.lastJitterMinutes == null ? null : Number(raw.lastJitterMinutes),
+      lastScheduledRunAt: Number(raw.lastScheduledRunAt || 0),
+      lastActualRunAt: Number(raw.lastActualRunAt || raw.lastAutoRunAt || 0),
     };
   }
 
+  function getScheduler() {
+    return normalizeScheduler(ST.scanMeta?.scheduler || {});
+  }
+
   function setConfig(newCfg) {
-    ST.patchScanMeta({ scheduler: Object.assign({}, ST.scanMeta?.scheduler || {}, newCfg) });
-    console.log('[SMART_SCAN] Config updated:', newCfg);
-    if (ST.scanMeta?.scheduler?.enabled) start(); 
+    const merged = normalizeScheduler(Object.assign({}, ST.scanMeta?.scheduler || {}, newCfg));
+    if (newCfg && (Object.prototype.hasOwnProperty.call(newCfg, 'hours') || Object.prototype.hasOwnProperty.call(newCfg, 'schedulerMode') || Object.prototype.hasOwnProperty.call(newCfg, 'mode') || Object.prototype.hasOwnProperty.call(newCfg, 'jitterMinMinutes') || Object.prototype.hasOwnProperty.call(newCfg, 'jitterMaxMinutes'))) {
+      merged.nextAutoScanAt = 0;
+      merged.lastBaseTime = '';
+      merged.lastBaseTimeAt = 0;
+      merged.lastJitterMinutes = null;
+      merged.lastScheduledRunAt = 0;
+    }
+    ST.patchScanMeta({ scheduler: merged });
+    console.log('[SMART_SCAN] Config updated:', merged);
+    if (merged.enabled) start();
+  }
+
+  function parseTimeMinutes(tStr) {
+    const [hh, mm] = String(tStr || '00:00').split(':').map(Number);
+    return (Number(hh) || 0) * 60 + (Number(mm) || 0);
+  }
+
+  function sortedHours(hours) {
+    return [...hours].sort((a, b) => parseTimeMinutes(a) - parseTimeMinutes(b));
+  }
+
+  function dayKey(date) {
+    return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+  }
+
+  function keyFor(baseDate, baseTime) {
+    return `${dayKey(baseDate)} ${baseTime}`;
+  }
+
+  function dateForTime(anchor, timeStr, addDays = 0) {
+    const [hh, mm] = String(timeStr).split(':').map(Number);
+    const d = new Date(anchor);
+    d.setDate(d.getDate() + addDays);
+    d.setHours(Number(hh) || 0, Number(mm) || 0, 0, 0);
+    return d;
+  }
+
+  function findNextBase(now, cfg) {
+    const sorted = sortedHours(cfg.hours);
+    for (const timeStr of sorted) {
+      const baseDate = dateForTime(now, timeStr, 0);
+      if (baseDate.getTime() > now.getTime()) return { baseDate, baseTime: timeStr, key: keyFor(baseDate, timeStr) };
+    }
+    const baseTime = sorted[0];
+    const baseDate = dateForTime(now, baseTime, 1);
+    return { baseDate, baseTime, key: keyFor(baseDate, baseTime) };
+  }
+
+  function randomJitterMinutes(cfg) {
+    const min = Number(cfg.jitterMinMinutes || 0);
+    const max = Number(cfg.jitterMaxMinutes || min);
+    return min + Math.floor(Math.random() * (max - min + 1));
+  }
+
+  function persistSchedulerAudit(patch) {
+    ST.patchScanMeta({ scheduler: normalizeScheduler(Object.assign({}, ST.scanMeta?.scheduler || {}, patch)) });
+  }
+
+  function scheduleNextJitter(now = new Date()) {
+    const cfg = getScheduler();
+    if (!cfg.enabled || cfg.schedulerMode !== 'jitter') return null;
+    const nextBase = findNextBase(now, cfg);
+    const jitterMinutes = randomJitterMinutes(cfg);
+    const nextAutoScanAt = nextBase.baseDate.getTime() + jitterMinutes * MINUTE;
+    persistSchedulerAudit({
+      nextAutoScanAt,
+      lastBaseTime: nextBase.baseTime,
+      lastBaseTimeAt: nextBase.baseDate.getTime(),
+      lastScheduledRunAt: nextAutoScanAt,
+      lastJitterMinutes: jitterMinutes,
+      pendingAutoRunKey: nextBase.key,
+      lastSchedulerEvent: 'jitter_scheduled'
+    });
+    console.log('[SMART_SCAN] jitter scheduled', {
+      baseTime: nextBase.baseDate.toISOString(),
+      jitterMinutes,
+      nextAutoScanAt: new Date(nextAutoScanAt).toISOString(),
+      mode: 'jitter'
+    });
+    return nextAutoScanAt;
   }
 
   function nextRunLabel(now = new Date()) {
-    const { enabled, hours } = getScheduler();
+    const cfg = getScheduler();
+    const { enabled, hours } = cfg;
     if (!enabled) return 'OFF';
+    if (cfg.schedulerMode === 'jitter' && cfg.nextAutoScanAt) {
+      const d = new Date(cfg.nextAutoScanAt);
+      const base = cfg.lastBaseTimeAt ? new Date(cfg.lastBaseTimeAt) : null;
+      const jitter = cfg.lastJitterMinutes == null ? '?' : cfg.lastJitterMinutes;
+      return `${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · jitter +${jitter}m${base ? ' from ' + base.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}`;
+    }
 
     const nowMin = now.getHours() * 60 + now.getMinutes();
-    const sorted = [...hours].sort((a, b) => {
-      const [ah, am] = a.split(':').map(Number);
-      const [bh, bm] = b.split(':').map(Number);
-      return (ah * 60 + am) - (bh * 60 + bm);
-    });
+    const sorted = sortedHours(hours);
 
     for (const tStr of sorted) {
       const [hh, mm] = tStr.split(':').map(Number);
@@ -297,7 +403,9 @@ window.SMART_SCAN = (() => {
     const ts = ST.scanMeta?.scheduler?.lastAutoRunAt;
     if (!ts) return 'None';
     const d = new Date(ts);
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' (' + d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ')';
+    const cfg = getScheduler();
+    const jitter = cfg.lastJitterMinutes == null ? '' : ` · jitter +${cfg.lastJitterMinutes}m`;
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' (' + d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ')' + jitter;
   }
 
   async function trigger(source = 'manual', trigger = source) {
@@ -316,6 +424,71 @@ window.SMART_SCAN = (() => {
     const now = new Date();
     const cfg = getScheduler();
     if (!cfg.enabled) return;
+    if (cfg.schedulerMode === 'jitter') {
+      let nextAt = Number(cfg.nextAutoScanAt || 0);
+      if (!nextAt || nextAt < Date.now() - 24 * 60 * MINUTE) {
+        nextAt = scheduleNextJitter(now);
+        if (!nextAt) return;
+      }
+      if (Date.now() < nextAt) return;
+
+      const minGapMs = Number(cfg.minGapMinutes || 20) * MINUTE;
+      const lastRunAt = Number(cfg.lastAutoRunAt || 0);
+      if (lastRunAt && Date.now() - lastRunAt < minGapMs) {
+        const delayedAt = lastRunAt + minGapMs;
+        persistSchedulerAudit({
+          nextAutoScanAt: delayedAt,
+          lastScheduledRunAt: delayedAt,
+          lastSchedulerEvent: 'delayed_min_gap'
+        });
+        console.log('[SMART_SCAN] jitter delayed for min gap', {
+          baseTime: cfg.lastBaseTimeAt ? new Date(cfg.lastBaseTimeAt).toISOString() : cfg.lastBaseTime,
+          jitterMinutes: cfg.lastJitterMinutes,
+          nextAutoScanAt: new Date(delayedAt).toISOString(),
+          lastAutoRunAt: new Date(lastRunAt).toISOString()
+        });
+        return;
+      }
+
+      if (running || window.__SCANNING__) {
+        const delayedAt = Date.now() + MINUTE;
+        persistSchedulerAudit({
+          nextAutoScanAt: delayedAt,
+          lastScheduledRunAt: delayedAt,
+          lastSchedulerEvent: 'delayed_scan_running'
+        });
+        console.log('[SMART_SCAN] jitter delayed because scan is already running', {
+          baseTime: cfg.lastBaseTimeAt ? new Date(cfg.lastBaseTimeAt).toISOString() : cfg.lastBaseTime,
+          jitterMinutes: cfg.lastJitterMinutes,
+          nextAutoScanAt: new Date(delayedAt).toISOString()
+        });
+        return;
+      }
+
+      console.log('[SMART_SCAN] jitter run due', {
+        baseTime: cfg.lastBaseTimeAt ? new Date(cfg.lastBaseTimeAt).toISOString() : cfg.lastBaseTime,
+        jitterMinutes: cfg.lastJitterMinutes,
+        scheduledRunAt: new Date(nextAt).toISOString(),
+        actualRunAt: now.toISOString()
+      });
+      const result = await trigger('auto', 'scheduled_jitter');
+      if (!result?.skipped) {
+        const actualRunAt = Date.now();
+        persistSchedulerAudit({
+          lastAutoRunAt: actualRunAt,
+          lastActualRunAt: actualRunAt,
+          lastAutoRunKey: cfg.pendingAutoRunKey || `${dayKey(now)} jitter`,
+          lastAutoRunHourKey: cfg.pendingAutoRunKey || `${dayKey(now)} jitter`,
+          nextAutoScanAt: 0,
+          lastSchedulerEvent: 'jitter_ran'
+        });
+        scheduleNextJitter(new Date(actualRunAt + MINUTE));
+        if (currentPage && PAGES[currentPage]) {
+          try { PAGES[currentPage].render(); } catch(e){}
+        }
+      }
+      return;
+    }
 
     const hour = String(now.getHours()).padStart(2, '0');
     const min = String(now.getMinutes()).padStart(2, '0');
@@ -326,16 +499,46 @@ window.SMART_SCAN = (() => {
     if (!isMatch) return;
 
     const key = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()} ${currentTimeStr}`;
-    const lastKey = ST.scanMeta?.scheduler?.lastAutoRunKey || '';
+    const lastKey = ST.scanMeta?.scheduler?.lastAutoRunKey || ST.scanMeta?.scheduler?.lastAutoRunHourKey || '';
     if (lastKey === key) return;
+    const minGapMs = Number(cfg.minGapMinutes || 20) * MINUTE;
+    const lastRunAt = Number(cfg.lastAutoRunAt || 0);
+    if (lastRunAt && Date.now() - lastRunAt < minGapMs) {
+      console.log('[SMART_SCAN] fixed schedule skipped by min gap', {
+        baseTime: currentTimeStr,
+        actualRunAt: now.toISOString(),
+        lastAutoRunAt: new Date(lastRunAt).toISOString(),
+        minGapMinutes: cfg.minGapMinutes
+      });
+      return;
+    }
+    if (running || window.__SCANNING__) {
+      console.log('[SMART_SCAN] fixed schedule skipped because scan is already running', {
+        baseTime: currentTimeStr,
+        actualRunAt: now.toISOString()
+      });
+      return;
+    }
 
-    console.log(`[SMART_SCAN] ${currentTimeStr} · 🎯 SCHEDULE MATCH! Triggering scan...`);
+    console.log('[SMART_SCAN] fixed schedule run due', {
+      baseTime: currentTimeStr,
+      jitterMinutes: 0,
+      actualRunAt: now.toISOString()
+    });
     const result = await trigger('auto', 'scheduled_window');
     if (!result?.skipped) {
       ST.patchScanMeta({ 
         scheduler: Object.assign({}, ST.scanMeta?.scheduler || {}, {
           lastAutoRunAt: Date.now(),
-          lastAutoRunKey: key
+          lastActualRunAt: Date.now(),
+          lastAutoRunKey: key,
+          lastAutoRunHourKey: key,
+          lastBaseTime: currentTimeStr,
+          lastBaseTimeAt: now.getTime(),
+          lastJitterMinutes: 0,
+          lastScheduledRunAt: now.getTime(),
+          nextAutoScanAt: 0,
+          lastSchedulerEvent: 'fixed_ran'
         })
       });
       if (currentPage && PAGES[currentPage]) {
