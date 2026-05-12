@@ -116,6 +116,11 @@ window.Telegram = (() => {
     return '';
   }
 
+  function relaySecret() {
+    if (typeof window === 'undefined') return '';
+    return String(window.SYSTEMTRADER_TELEGRAM_RELAY_SECRET || '').trim();
+  }
+
   function isLocalOrigin() {
     const host = String(window.location?.hostname || '').toLowerCase();
     return ['localhost', '127.0.0.1', '::1'].includes(host);
@@ -134,9 +139,12 @@ window.Telegram = (() => {
     const url = relayUrl();
     if (!url) return { ok: false, skipped: true, reason: 'relay_unavailable' };
     try {
+      const secret = relaySecret();
+      const headers = { 'Content-Type': 'application/json' };
+      if (secret) headers['X-SystemTrader-Relay-Secret'] = secret;
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ message }),
       });
       if (!res.ok) return { ok: false, reason: `relay_http_${res.status}` };

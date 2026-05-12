@@ -7,6 +7,8 @@ const HOST = process.env.ST_TELEGRAM_RELAY_HOST || '127.0.0.1';
 const PORT = Number(process.env.ST_TELEGRAM_RELAY_PORT || 8787);
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
+const RELAY_SECRET = process.env.TELEGRAM_RELAY_SECRET || '';
+const RELAY_SECRET_HEADER = 'x-systemtrader-relay-secret';
 
 function sendJson(res, status, body) {
   res.writeHead(status, {
@@ -24,6 +26,17 @@ async function readJson(req) {
   if (!raw) return {};
   if (raw.length > 20000) throw new Error('payload_too_large');
   return JSON.parse(raw);
+}
+
+function hasValidRelaySecret(req) {
+  if (!RELAY_SECRET) return true;
+  const provided = String(req.headers[RELAY_SECRET_HEADER] || '');
+  if (provided.length !== RELAY_SECRET.length) return false;
+  let diff = 0;
+  for (let i = 0; i < RELAY_SECRET.length; i++) {
+    diff |= RELAY_SECRET.charCodeAt(i) ^ provided.charCodeAt(i);
+  }
+  return diff === 0;
 }
 
 async function sendTelegram(message) {
@@ -52,11 +65,15 @@ const server = http.createServer(async (req, res) => {
         ok: !!(TOKEN && CHAT_ID),
         tokenConfigured: !!TOKEN,
         chatConfigured: !!CHAT_ID,
+        relaySecretRequired: !!RELAY_SECRET,
       });
     }
 
     if (req.method !== 'POST' || req.url !== '/telegram/send') {
       return sendJson(res, 404, { ok: false, error: 'not_found' });
+    }
+    if (!hasValidRelaySecret(req)) {
+      return sendJson(res, 403, { ok: false, error: 'relay_secret_invalid' });
     }
 
     const payload = await readJson(req);

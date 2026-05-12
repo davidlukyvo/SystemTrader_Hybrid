@@ -17,9 +17,10 @@ async function loadAnalyticsData() {
     const regime = await OUTCOME_EVAL.getRegimePerformance(analyticsPopulation);
     const score = await OUTCOME_EVAL.getScoreBucketPerformance(analyticsPopulation);
     const holding = await OUTCOME_EVAL.getHoldingPeriodPerformance(analyticsPopulation);
+    const attribution = OUTCOME_EVAL.getOutcomeAttributionReport ? await OUTCOME_EVAL.getOutcomeAttributionReport() : null;
     const truthSummary = await OUTCOME_EVAL.getAnalyticsTruthSummary();
     const stats = await DB.getStats();
-    analyticsData = { category: category, setup: setup, regime: regime, score: score, holding: holding, truthSummary: truthSummary, stats: stats, population: analyticsPopulation };
+    analyticsData = { category: category, setup: setup, regime: regime, score: score, holding: holding, attribution: attribution, truthSummary: truthSummary, stats: stats, population: analyticsPopulation };
   } catch (err) {
     console.error('[ANALYTICS] Load error:', err);
   }
@@ -74,11 +75,11 @@ function renderAnalyticsTable(headers, rows) {
 
 function renderCategoryView() {
   var data = (analyticsData && analyticsData.category) || [];
-  var headers = ['Category', 'Total', 'Win', 'Loss', 'Win Rate', 'Avg %', 'Avg R'];
+  var headers = ['Category', 'Total', 'Win', 'Loss', 'Win Rate', 'Avg %', 'Planned R', 'Raw Checkpoint R'];
   var rows = data.map(function(r) {
     var wrColor = r.winRate >= 55 ? 'var(--green)' : r.winRate >= 45 ? 'var(--yellow)' : 'var(--red)';
     var pctColor = r.avgPctChange >= 0 ? 'var(--green)' : 'var(--red)';
-    return '<tr><td><span class="badge badge-purple">' + (r.category || 'OTHER') + '</span></td><td class="mono">' + r.total + '</td><td class="mono text-green">' + r.winners + '</td><td class="mono text-red">' + r.losers + '</td><td class="mono fw-700" style="color:' + wrColor + '">' + r.winRate + '%</td><td class="mono" style="color:' + pctColor + '">' + (r.avgPctChange > 0 ? '+' : '') + r.avgPctChange + '%</td><td class="mono">' + r.avgR + 'R</td></tr>';
+    return '<tr><td><span class="badge badge-purple">' + (r.category || 'OTHER') + '</span></td><td class="mono">' + r.total + '</td><td class="mono text-green">' + r.winners + '</td><td class="mono text-red">' + r.losers + '</td><td class="mono fw-700" style="color:' + wrColor + '">' + r.winRate + '%</td><td class="mono" style="color:' + pctColor + '">' + (r.avgPctChange > 0 ? '+' : '') + r.avgPctChange + '%</td><td class="mono">' + (r.avgPlannedTradeR ?? r.avgR) + 'R</td><td class="mono text-muted">' + (r.avgRawCheckpointR ?? r.avgR) + 'R</td></tr>';
   });
   
   var bestCategory = data.length ? data[0] : null;
@@ -88,7 +89,7 @@ function renderCategoryView() {
         '<div style="font-size:24px">💎</div>' +
         '<div>' +
           '<div class="fw-700 text-purple">Narrative Edge Detected: ' + bestCategory.category + '</div>' +
-          '<div class="text-xs text-muted">Win Rate: ' + bestCategory.winRate + '% · Avg R: ' + bestCategory.avgR + 'R · Samples: ' + bestCategory.total + '</div>' +
+          '<div class="text-xs text-muted">Win Rate: ' + bestCategory.winRate + '% · Planned R: ' + (bestCategory.avgPlannedTradeR ?? bestCategory.avgR) + 'R · Raw R: ' + (bestCategory.avgRawCheckpointR ?? bestCategory.avgR) + 'R · Samples: ' + bestCategory.total + '</div>' +
         '</div>' +
       '</div>' +
     '</div>'
@@ -99,13 +100,13 @@ function renderCategoryView() {
 
 function renderSetupView() {
   var data = (analyticsData && analyticsData.setup) || [];
-  var headers = ['Setup', 'Total', 'Win', 'Loss', 'Win Rate', 'Avg %', 'Avg R'];
+  var headers = ['Setup', 'Total', 'Win', 'Loss', 'Win Rate', 'Avg %', 'Planned R', 'Raw Checkpoint R'];
   var rows = data.map(function(r) {
     var wrColor = r.winRate >= 55 ? 'var(--green)' : r.winRate >= 45 ? 'var(--yellow)' : 'var(--red)';
     var pctColor = r.avgPctChange >= 0 ? 'var(--green)' : 'var(--red)';
-    return '<tr><td class="fw-700">' + r.setup + '</td><td class="mono">' + r.total + '</td><td class="mono text-green">' + r.winners + '</td><td class="mono text-red">' + r.losers + '</td><td class="mono fw-700" style="color:' + wrColor + '">' + r.winRate + '%</td><td class="mono" style="color:' + pctColor + '">' + (r.avgPctChange > 0 ? '+' : '') + r.avgPctChange + '%</td><td class="mono">' + r.avgR + 'R</td></tr>';
+    return '<tr><td class="fw-700">' + r.setup + '</td><td class="mono">' + r.total + '</td><td class="mono text-green">' + r.winners + '</td><td class="mono text-red">' + r.losers + '</td><td class="mono fw-700" style="color:' + wrColor + '">' + r.winRate + '%</td><td class="mono" style="color:' + pctColor + '">' + (r.avgPctChange > 0 ? '+' : '') + r.avgPctChange + '%</td><td class="mono">' + (r.avgPlannedTradeR ?? r.avgR) + 'R</td><td class="mono text-muted">' + (r.avgRawCheckpointR ?? r.avgR) + 'R</td></tr>';
   });
-  return '<div class="card mb-20"><div class="card-title">Setup Performance</div><div class="text-sm text-muted" style="margin-bottom:12px">Win rate và average return theo từng loại setup, dựa trên nhóm ' + analyticsPopulationLabel() + '. Dữ liệu đến từ checkpoint snapshot evaluation.</div>' + renderAnalyticsTable(headers, rows) + '</div>';
+  return '<div class="card mb-20"><div class="card-title">Setup Performance</div><div class="text-sm text-muted" style="margin-bottom:12px">Win rate và planned trade R theo từng loại setup, dựa trên nhóm ' + analyticsPopulationLabel() + '. Dữ liệu đến từ checkpoint snapshot evaluation.</div>' + renderAnalyticsTable(headers, rows) + '</div>';
 }
 
 function renderRegimeView() {
@@ -133,13 +134,169 @@ function renderScoreView() {
 
 function renderHoldingView() {
   var data = (analyticsData && analyticsData.holding) || [];
-  var headers = ['Period', 'Total', 'Win', 'Loss', 'Win Rate', 'Avg %', 'Avg R'];
+  var headers = ['Period', 'Total', 'Win', 'Loss', 'Win Rate', 'Avg %', 'Planned R', 'Raw Checkpoint R'];
   var rows = data.map(function(r) {
     var wrColor = r.winRate >= 55 ? 'var(--green)' : r.winRate >= 45 ? 'var(--yellow)' : 'var(--red)';
     var pctColor = r.avgPctChange >= 0 ? 'var(--green)' : 'var(--red)';
-    return '<tr><td class="fw-700">' + r.period + '</td><td class="mono">' + r.total + '</td><td class="mono text-green">' + r.winners + '</td><td class="mono text-red">' + r.losers + '</td><td class="mono fw-700" style="color:' + wrColor + '">' + r.winRate + '%</td><td class="mono" style="color:' + pctColor + '">' + (r.avgPctChange > 0 ? '+' : '') + r.avgPctChange + '%</td><td class="mono">' + r.avgR + 'R</td></tr>';
+    return '<tr><td class="fw-700">' + r.period + '</td><td class="mono">' + r.total + '</td><td class="mono text-green">' + r.winners + '</td><td class="mono text-red">' + r.losers + '</td><td class="mono fw-700" style="color:' + wrColor + '">' + r.winRate + '%</td><td class="mono" style="color:' + pctColor + '">' + (r.avgPctChange > 0 ? '+' : '') + r.avgPctChange + '%</td><td class="mono">' + (r.avgPlannedTradeR ?? r.avgR) + 'R</td><td class="mono text-muted">' + (r.avgRawCheckpointR ?? r.avgR) + 'R</td></tr>';
   });
   return '<div class="card mb-20"><div class="card-title">Holding Period Performance</div><div class="text-sm text-muted" style="margin-bottom:12px">So sánh D1 vs D3 vs D7 vs D14 vs D30 để xem khoảng thời gian nào tối ưu cho edge của Bạn. Chỉ tính trên nhóm ' + analyticsPopulationLabel() + '.</div>' + renderAnalyticsTable(headers, rows) + '</div>';
+}
+
+function attributionConfidenceLabel(conf) {
+  return (conf && conf.label) || 'Unknown confidence';
+}
+
+function attributionConfidenceClass(conf) {
+  var level = (conf && conf.level) || '';
+  if (level === 'very_low_confidence') return 'badge-red';
+  if (level === 'low_confidence') return 'badge-yellow';
+  if (level === 'moderate_observation') return 'badge-purple';
+  return 'badge-green';
+}
+
+function renderAttributionGuardrail(total, conf) {
+  var warning = conf && conf.shouldWarn ? '<div class="text-xs text-yellow" style="margin-top:6px">Do not tune from low sample size.</div>' : '';
+  return '<div class="card mb-20" style="border-left:4px solid var(--yellow)">' +
+    '<div class="card-title">Sample-size Guardrail</div>' +
+    '<div class="grid-4 gap-8">' +
+      '<div style="padding:12px;border-radius:8px;background:var(--bg-hover)"><div class="text-xs text-muted">Matched outcomes</div><div class="fw-700">' + (total || 0) + '</div></div>' +
+      '<div style="padding:12px;border-radius:8px;background:var(--bg-hover)"><div class="text-xs text-muted">&lt;10</div><div class="fw-700">Very low confidence</div></div>' +
+      '<div style="padding:12px;border-radius:8px;background:var(--bg-hover)"><div class="text-xs text-muted">10-30</div><div class="fw-700">Low confidence</div></div>' +
+      '<div style="padding:12px;border-radius:8px;background:var(--bg-hover)"><div class="text-xs text-muted">30-100 / &gt;100</div><div class="fw-700">Moderate / Stronger</div></div>' +
+    '</div>' +
+    '<div class="text-sm text-muted" style="margin-top:10px">Current confidence: <span class="badge ' + attributionConfidenceClass(conf) + '">' + attributionConfidenceLabel(conf) + '</span></div>' +
+    warning +
+  '</div>';
+}
+
+function renderTopInsightsPanel(report) {
+  var insights = report.topInsights || {};
+  var tier = (insights.tierPlannedTradeR || []).map(function(r) {
+    return '<div><span class="badge badge-gray">' + r.key + '</span> <span class="mono">' + r.avgPlannedTradeR + 'R</span> <span class="text-xs text-muted">(' + r.total + ' samples)</span></div>';
+  }).join('') || '<div class="text-muted">No tier samples yet.</div>';
+  var pools = (insights.learningPoolPlannedTradeR || []).map(function(r) {
+    return '<div><span class="badge badge-gray">' + r.key + '</span> <span class="mono">' + r.avgPlannedTradeR + 'R</span> <span class="text-xs text-muted">(' + r.total + ' samples)</span></div>';
+  }).join('') || '<div class="text-muted">No pool samples yet.</div>';
+  var strongest = insights.strongestMbeBucket ? insights.strongestMbeBucket.group + ' / ' + insights.strongestMbeBucket.key + ' (' + insights.strongestMbeBucket.avgPlannedTradeR + 'R)' : 'Not enough MBE buckets';
+  var weakest = insights.weakestMbeBucket ? insights.weakestMbeBucket.group + ' / ' + insights.weakestMbeBucket.key + ' (' + insights.weakestMbeBucket.avgPlannedTradeR + 'R)' : 'Not enough MBE buckets';
+  var failure = insights.mostCommonFailureMode ? insights.mostCommonFailureMode.key + ' (' + insights.mostCommonFailureMode.total + ' samples)' : 'No failure modes yet';
+  var gaps = insights.gapCases || {};
+  return '<div class="card mb-20" style="border-left:4px solid var(--cyan)">' +
+    '<div class="card-title">Top Insights - Analytics Only</div>' +
+    '<div class="text-sm text-muted" style="margin-bottom:12px">Analytics only, no automatic tuning.</div>' +
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px">' +
+      '<div><div class="text-xs text-muted mb-6">Planned Trade R by Tier</div>' + tier + '</div>' +
+      '<div><div class="text-xs text-muted mb-6">Execution vs Near-approved</div>' + pools + '</div>' +
+      '<div><div class="text-xs text-muted mb-6">MBE Buckets</div><div><strong>Strongest:</strong> ' + strongest + '</div><div><strong>Weakest:</strong> ' + weakest + '</div></div>' +
+      '<div><div class="text-xs text-muted mb-6">Failure / Gap Cases</div><div><strong>Most common:</strong> ' + failure + '</div><div class="text-xs text-muted">Weak raw: ' + (gaps.plannedWinRawWeak || 0) + ' | Ran further: ' + (gaps.plannedCappedRawRanFurther || 0) + ' | Recovered: ' + (gaps.stopHitRawRecovered || 0) + '</div></div>' +
+    '</div>' +
+  '</div>';
+}
+
+function renderDataQualityPanel(report) {
+  var q = report.dataQuality || {};
+  function qcell(label, item) {
+    if (typeof item === 'number') return '<div style="padding:12px;border-radius:8px;background:var(--bg-hover)"><div class="text-xs text-muted">' + label + '</div><div class="fw-700">' + item + '</div></div>';
+    return '<div style="padding:12px;border-radius:8px;background:var(--bg-hover)"><div class="text-xs text-muted">' + label + '</div><div class="fw-700">' + ((item && item.pct) || 0) + '%</div><div class="text-xs text-muted">' + ((item && item.count) || 0) + ' / ' + (report.matchedSamples || 0) + '</div></div>';
+  }
+  return '<div class="card mb-20">' +
+    '<div class="card-title">Data Quality</div>' +
+    '<div class="text-sm text-muted" style="margin-bottom:12px">Coverage check for planned/raw outcome fields, Agentic Review, MBE full_ohlcv input, and legacy outcomes.</div>' +
+    '<div class="grid-4 gap-8">' +
+      qcell('plannedTradeR coverage', q.plannedTradeRCoverage) +
+      qcell('rawCheckpointR coverage', q.rawCheckpointRCoverage) +
+      qcell('agentReview coverage', q.agentReviewCoverage) +
+      qcell('MBE full_ohlcv coverage', q.mbeFullOhlcvCoverage) +
+      qcell('legacy outcome count', q.legacyOutcomeCount || 0) +
+    '</div>' +
+  '</div>';
+}
+
+function renderAttributionTable(title, rows, note) {
+  var headers = ['Factor / Bucket', 'Samples', 'Confidence', 'Win Rate', 'Planned Trade R', 'Raw Checkpoint R', 'Gap R', 'Caps'];
+  var body = (rows || []).map(function(r) {
+    var planned = Number(r.avgPlannedTradeR || 0);
+    var gap = Number(r.avgGapR || 0);
+    var plannedColor = planned > 0 ? 'var(--green)' : planned < 0 ? 'var(--red)' : 'var(--text)';
+    var gapColor = gap > 0 ? 'var(--cyan)' : gap < 0 ? 'var(--yellow)' : 'var(--text)';
+    var warning = r.sampleWarning ? '<div class="text-xs text-yellow">' + r.sampleWarning + '</div>' : '';
+    return '<tr><td class="fw-700">' + (r.key || 'unknown') + '</td><td class="mono">' + (r.total || 0) + '</td><td><span class="badge ' + attributionConfidenceClass(r.sampleConfidence) + '">' + attributionConfidenceLabel(r.sampleConfidence) + '</span>' + warning + '</td><td class="mono">' + (r.winRate || 0) + '%</td><td class="mono fw-700" style="color:' + plannedColor + '">' + planned + 'R</td><td class="mono text-muted">' + Number(r.avgRawCheckpointR || 0) + 'R</td><td class="mono" style="color:' + gapColor + '">' + (gap > 0 ? '+' : '') + gap + 'R</td><td class="mono">' + (r.capApplied || 0) + '</td></tr>';
+  });
+  return '<div class="card mb-20"><div class="card-title">' + title + '</div>' +
+    '<div class="text-sm text-muted" style="margin-bottom:12px">' + (note || 'Read-only attribution. Planned trade performance is primary; raw checkpoint follow-through is secondary.') + '</div>' +
+    renderAnalyticsTable(headers, body) +
+  '</div>';
+}
+
+function renderGapTable(title, rows, note) {
+  var headers = ['Symbol', 'Checkpoint', 'Tier', 'Pool', 'Planned Trade R', 'Raw Checkpoint R', 'Gap R'];
+  var body = (rows || []).map(function(r) {
+    var gap = Number(r.gapR || 0);
+    var gapColor = gap > 0 ? 'var(--cyan)' : gap < 0 ? 'var(--yellow)' : 'var(--text)';
+    return '<tr><td class="fw-700">' + (r.symbol || 'UNKNOWN') + '</td><td class="mono">' + (r.checkDay || '-') + '</td><td><span class="badge badge-gray">' + (r.tier || '-') + '</span></td><td class="mono">' + (r.learningPool || '-') + '</td><td class="mono">' + Number(r.plannedTradeR || 0) + 'R</td><td class="mono text-muted">' + Number(r.rawCheckpointR || 0) + 'R</td><td class="mono fw-700" style="color:' + gapColor + '">' + (gap > 0 ? '+' : '') + gap + 'R</td></tr>';
+  });
+  return '<div class="card mb-20"><div class="card-title">' + title + '</div>' +
+    '<div class="text-sm text-muted" style="margin-bottom:12px">' + (note || 'Gap cases compare planned trade outcome against raw checkpoint mark-to-market follow-through.') + '</div>' +
+    renderAnalyticsTable(headers, body) +
+  '</div>';
+}
+
+function renderAttributionView() {
+  var report = analyticsData && analyticsData.attribution;
+  if (!report || report.ok === false) {
+    return '<div class="card mb-20"><div class="card-title">Outcome Attribution</div><div class="text-sm text-muted">Attribution report is not ready yet.</div></div>';
+  }
+
+  var sem = report.metricSemantics || {};
+  var mbe = report.mbe || {};
+  var agent = report.agentReview || {};
+  var context = report.context || {};
+  var gaps = report.rawVsPlannedGaps || {};
+  var intro = '<div class="card mb-20" style="border-left:4px solid var(--cyan)">' +
+    '<div class="card-title">Outcome Attribution - Read Only</div>' +
+    '<div class="text-sm text-muted" style="line-height:1.7">' +
+      '<strong>Primary:</strong> ' + (sem.primary || 'plannedTradeR = planned trade performance') + '<br>' +
+      '<strong>Secondary:</strong> ' + (sem.secondary || 'rawCheckpointR = raw checkpoint follow-through') + '<br>' +
+      '<strong>Legacy:</strong> ' + (sem.legacy || 'actualR remains raw checkpoint mark-to-market') + '<br>' +
+      '<strong>Scope:</strong> report panel only; no threshold, authority, scoring, Telegram, deployableTop3, MBE, or Agentic Review decision impact.' +
+    '</div>' +
+    '<div class="grid-4 gap-8" style="margin-top:12px">' +
+      '<div style="padding:12px;border-radius:8px;background:var(--bg-hover)"><div class="text-xs text-muted">Outcomes</div><div class="fw-700">' + (report.totalOutcomes || 0) + '</div></div>' +
+      '<div style="padding:12px;border-radius:8px;background:var(--bg-hover)"><div class="text-xs text-muted">Matched Samples</div><div class="fw-700">' + (report.matchedSamples || 0) + '</div></div>' +
+      '<div style="padding:12px;border-radius:8px;background:var(--bg-hover)"><div class="text-xs text-muted">Planned Metric</div><div class="fw-700">plannedTradeR</div></div>' +
+      '<div style="padding:12px;border-radius:8px;background:var(--bg-hover)"><div class="text-xs text-muted">Follow-through</div><div class="fw-700">rawCheckpointR</div></div>' +
+    '</div>' +
+  '</div>';
+
+  return intro +
+    renderAttributionGuardrail(report.matchedSamples, report.sampleConfidence) +
+    renderTopInsightsPanel(report) +
+    renderDataQualityPanel(report) +
+    renderAttributionTable('READY / PLAYABLE / PROBE planned trade performance', report.byTier, 'Performance by authority display tier using plannedTradeR as the primary trade metric.') +
+    renderAttributionTable('Execution vs Near-approved planned trade performance', report.byLearningPool, 'Compares execution-approved outcomes with near-approved learning-pool outcomes. Read-only only.') +
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:20px">' +
+      renderAttributionTable('MBE: priceZoneQuality', mbe.priceZoneQuality, 'Market Behavior Evidence bucketed by price zone quality.') +
+      renderAttributionTable('MBE: volumeSupportScore', mbe.volumeSupportScore, 'Market Behavior Evidence bucketed by volume support score.') +
+      renderAttributionTable('MBE: volumeResistanceRisk', mbe.volumeResistanceRisk, 'Market Behavior Evidence bucketed by resistance risk.') +
+      renderAttributionTable('MBE: pathToTPQuality', mbe.pathToTPQuality, 'Market Behavior Evidence bucketed by path-to-TP quality.') +
+      renderAttributionTable('MBE: failureModeCandidate', mbe.failureModeCandidate, 'Failure mode candidate labels versus planned and raw outcomes.') +
+    '</div>' +
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:20px">' +
+      renderAttributionTable('Agentic Review: bullCase count', agent.bullCaseCount, 'Read-only bull case count buckets.') +
+      renderAttributionTable('Agentic Review: bearCase count', agent.bearCaseCount, 'Read-only bear case count buckets.') +
+      renderAttributionTable('Agentic Review: riskFlags', agent.riskFlags, 'Risk flags observed in Agentic Review behavior evidence.') +
+      renderAttributionTable('Agentic Review: finalOperatorNote category', agent.finalOperatorNoteCategory, 'Final operator note categories when available.') +
+    '</div>' +
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:20px">' +
+      renderAttributionTable('Context: btcContext', context.btcContext, 'BTC context versus planned trade performance.') +
+      renderAttributionTable('Context: CHOP / sideway / regime', context.regimeType, 'Regime context versus planned trade performance.') +
+      renderAttributionTable('Context: scan hour', context.scanHour, 'Scan hour bucket versus planned trade performance.') +
+      renderAttributionTable('Context: session', context.session, 'Session bucket versus planned trade performance.') +
+    '</div>' +
+    renderGapTable('Gap: planned win but raw checkpoint weak', gaps.plannedWinRawWeak, 'Cases where the planned trade looks positive, but checkpoint follow-through was weak or negative.') +
+    renderGapTable('Gap: planned capped but raw ran further', gaps.plannedCappedRawRanFurther, 'Cases where planned trade R is capped, but raw checkpoint follow-through kept running.') +
+    renderGapTable('Gap: stop hit but raw checkpoint later recovered', gaps.stopHitRawRecovered, 'Cases where the planned stop outcome was negative, but later checkpoint MTM recovered above zero.');
 }
 
 function renderHeatmapView() {
@@ -231,7 +388,7 @@ function renderAuditView() {
         const wrColor = r.winRate >= 50 ? 'var(--green)' : r.winRate >= 35 ? 'var(--yellow)' : 'var(--red)';
         const rColor = r.avgR > 0 ? 'var(--green)' : r.avgR < 0 ? 'var(--red)' : 'var(--text)';
         const label = isNaN(key) ? key : `${key}:00`;
-        return `<tr><td class="fw-700">${label}</td><td class="mono">${r.total}</td><td class="mono" style="color:${wrColor}">${r.winRate}%</td><td class="mono fw-700" style="color:${rColor}">${r.avgR}R</td></tr>`;
+        return `<tr><td class="fw-700">${label}</td><td class="mono">${r.total}</td><td class="mono" style="color:${wrColor}">${r.winRate}%</td><td class="mono fw-700" style="color:${rColor}">${r.avgPlannedTradeR ?? r.avgR}R</td><td class="mono text-muted">${r.avgRawCheckpointR ?? r.avgR}R</td></tr>`;
       });
     return `
       <div class="card mb-20">
@@ -240,7 +397,7 @@ function renderAuditView() {
       </div>`;
   };
 
-  const commonHeaders = ['Segment', 'Samples', 'Win Rate', 'Avg R'];
+  const commonHeaders = ['Segment', 'Samples', 'Win Rate', 'Planned R', 'Raw R'];
   
   return configHtml + `
     <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px;">
@@ -269,6 +426,7 @@ async function renderAnalytics() {
     analyticsView === 'regime' ? renderRegimeView() :
     analyticsView === 'heatmap' ? renderHeatmapView() :
     analyticsView === 'audit' ? renderAuditView() :
+    analyticsView === 'attribution' ? renderAttributionView() :
     analyticsView === 'score' ? renderScoreView() :
     renderHoldingView();
 
@@ -294,6 +452,7 @@ async function renderAnalytics() {
       '<button class="btn btn-sm ' + (analyticsView === 'regime' ? 'btn-primary' : 'btn-outline') + '" onclick="switchAnalyticsView(\'regime\')">🌍 Regime</button>' +
       '<button class="btn btn-sm ' + (analyticsView === 'score' ? 'btn-primary' : 'btn-outline') + '" onclick="switchAnalyticsView(\'score\')">🎯 Score Bucket</button>' +
       '<button class="btn btn-sm ' + (analyticsView === 'holding' ? 'btn-primary' : 'btn-outline') + '" onclick="switchAnalyticsView(\'holding\')">⏱ Holding Period</button>' +
+      '<button class="btn btn-sm ' + (analyticsView === 'attribution' ? 'btn-primary' : 'btn-outline') + '" onclick="switchAnalyticsView(\'attribution\')">Attribution</button>' +
       '<div style="flex:1"></div>' +
       '<button class="btn btn-sm btn-outline" onclick="refreshOutcomesManual()" id="btnRefreshOutcomes">🔄 Refresh Outcomes</button>' +
       '<button class="btn btn-sm btn-outline" onclick="reloadAnalytics()">♻ Reload</button>' +

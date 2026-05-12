@@ -144,6 +144,7 @@ ST_RUNNER_TELEGRAM=0
 ST_RUNNER_NOTIFY_ZERO_ACTIONABLE=0
 ST_TELEGRAM_RELAY_HOST=127.0.0.1
 ST_TELEGRAM_RELAY_PORT=8787
+TELEGRAM_RELAY_SECRET=...
 TELEGRAM_BOT_TOKEN=...
 TELEGRAM_CHAT_ID=...
 ```
@@ -158,6 +159,7 @@ Validation checklist:
 
 - Run an export and confirm no Telegram token or chat ID appears in the JSON.
 - Confirm Telegram still sends from the server using environment variables.
+- If `TELEGRAM_RELAY_SECRET` is set, confirm relay clients send `X-SystemTrader-Relay-Secret`.
 - Confirm local/manual fallback still works during the migration window.
 - Confirm logs do not print full token or chat ID.
 
@@ -185,6 +187,14 @@ nginx proxies browser messages from:
 ```
 
 The browser app prefers `/api/telegram/send` when served over HTTP(S). self-hosted runtime should use `?telegramMode=env`, which refuses legacy local-secret fallback if the relay is unavailable. Local manual mode without this query string can still fall back to legacy config during the migration window.
+
+When `TELEGRAM_RELAY_SECRET` is set, `ops/telegram-relay.js` rejects `/telegram/send` requests unless they include:
+
+```text
+X-SystemTrader-Relay-Secret: <TELEGRAM_RELAY_SECRET>
+```
+
+The sample nginx config forwards that header and applies a small rate limit to `/api/telegram/send`. For public deployments, set a high-entropy `TELEGRAM_RELAY_SECRET`, keep `?telegramMode=env`, and only inject `window.SYSTEMTRADER_TELEGRAM_RELAY_SECRET` into trusted browser runtimes. Do not commit the relay secret or place it in screenshots/logs.
 
 ## Browser Runtime
 

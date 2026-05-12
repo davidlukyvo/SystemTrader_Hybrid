@@ -233,9 +233,10 @@
     ];
     const outcomes = [
       { id: 'out-reject-D1', signalId: fixtures.rejectedTechnical.id, verdict: 'winner', pctChange: 8, actualR: 1.2, checkDay: 'D1', evaluatedAt: Date.now() },
-      { id: 'out-approve-D1', signalId: fixtures.actionableApproved.id, verdict: 'winner', pctChange: 5, actualR: 1.0, checkDay: 'D1', evaluatedAt: Date.now() },
+      { id: 'out-approve-D1', signalId: fixtures.actionableApproved.id, verdict: 'winner', pctChange: 5, actualR: 30, rawCheckpointR: 30, plannedTradeR: 1.9, plannedTradeVerdict: 'winner', outcomeRMode: 'planned_trade_capped', plannedTradeCapApplied: true, checkDay: 'D1', evaluatedAt: Date.now() },
       { id: 'out-near-D1', signalId: fixtures.nearApproved.id, verdict: 'winner', pctChange: 4, actualR: 0.8, checkDay: 'D1', evaluatedAt: Date.now() },
       { id: 'out-bound-D1', signalId: fixtures.positionBound.id, verdict: 'winner', pctChange: 6, actualR: 1.1, checkDay: 'D1', evaluatedAt: Date.now() },
+      { id: 'out-legacy-D3', signalId: fixtures.nearApproved.id, verdict: 'winner', pctChange: 60, actualR: 30, checkDay: 'D3', evaluatedAt: Date.now() },
     ];
 
     root.DB = Object.assign({}, original || {}, {
@@ -260,6 +261,7 @@
     assert(typeof root.ST?.validateAuthorityContract === 'function', 'missing_authority_validator', 'ST.validateAuthorityContract is unavailable');
     assert(typeof root.ANALYTICS_ENGINE?.getSignalTruth === 'function', 'missing_analytics_truth', 'ANALYTICS_ENGINE.getSignalTruth is unavailable');
     assert(typeof root.OUTCOME_EVAL?.getScoreBucketPerformance === 'function', 'missing_outcome_eval', 'OUTCOME_EVAL.getScoreBucketPerformance is unavailable');
+    assert(typeof root.OUTCOME_EVAL?.getOutcomeAttributionReport === 'function', 'missing_outcome_attribution', 'OUTCOME_EVAL.getOutcomeAttributionReport is unavailable');
     assert(typeof root.AlertEngine?.messageFor === 'function', 'missing_alert_builder', 'AlertEngine.messageFor is unavailable');
     assert(typeof root.DB?.normalizeSignalRecord === 'function', 'missing_db_normalizer', 'DB.normalizeSignalRecord is unavailable');
     assert(typeof root.getCanonicalStructuralSetups === 'function', 'missing_setup_taxonomy', 'Canonical setup taxonomy helper is unavailable');
@@ -305,6 +307,18 @@
     assert(root.isMaintainedSignalState(fixtures.positionBound) === true, 'position_bound_not_detected', 'Maintained state was not detected');
     assert(root.shouldExposeTradeLevels(fixtures.positionBound) === false, 'position_bound_trade_block_leak', 'Position-bound signal must not expose trade levels');
     checks.push({ scenario: 'position_bound_contract', passed: true });
+
+    assert(root.EXECUTION_ENGINE_V9.POS_STATE.EXPIRED === 'EXPIRED', 'pos_state_expired_missing', 'Expired lifecycle state must be explicitly defined');
+    assert(root.EXECUTION_ENGINE_V9.CLOSED_STATES.has('EXPIRED'), 'expired_not_closed_state', 'Expired positions must be treated as closed positions');
+    assert(root.EXECUTION_ENGINE_V9.CLOSED_STATES.has('TIMED_OUT_EXIT'), 'timed_out_exit_not_closed_state', 'Velocity timeout exits must be treated as closed positions');
+    const expiredLifecycle = root.EXECUTION_ENGINE_V9.expireStalePendingPositions([{
+      id: 'pos-expired-fixture',
+      symbol: 'EXP',
+      positionState: root.EXECUTION_ENGINE_V9.POS_STATE.PENDING,
+      expiresAt: Date.now() - 1000,
+    }]);
+    assert(expiredLifecycle[0]?.positionState === 'EXPIRED', 'expired_lifecycle_state_regression', 'Expired pending positions must receive EXPIRED positionState', expiredLifecycle[0]);
+    checks.push({ scenario: 'position_lifecycle_closed_states', passed: true });
 
     const rejectedMessage = root.AlertEngine.messageFor(fixtures.rejectedTechnical, {}, { btcContext: 'sideway' });
     assert(rejectedMessage.includes('WATCH'), 'alert_headline_regression', 'Rejected technical signal alert headline must follow action truth', { rejectedMessage });
@@ -422,6 +436,45 @@
       assert(buckets.every(bucket => bucket.scoreField === 'riskAdjustedScore'), 'analytics_score_field_regression', 'Score bucket analytics drifted away from riskAdjustedScore', { buckets });
     });
     checks.push({ scenario: 'analytics_truth_contract', passed: true });
+
+    const stopOutcome = root.OUTCOME_EVAL.normalizePlannedTradeOutcome({ rr: 2.5 }, -15, true, false, 100, 95, 112.5);
+    assert(stopOutcome.rawCheckpointR === -15, 'raw_checkpoint_r_not_preserved', 'Raw checkpoint R must preserve mark-to-market excursion', stopOutcome);
+    assert(stopOutcome.plannedTradeR === -1, 'planned_stop_not_capped', 'Stop-hit planned trade outcome must cap at -1R', stopOutcome);
+    assert(stopOutcome.plannedTradeVerdict === 'loser', 'planned_stop_verdict_wrong', 'Stop-hit planned trade verdict should be loser', stopOutcome);
+    assert(stopOutcome.outcomeRMode === 'planned_trade_capped' && stopOutcome.plannedTradeCapApplied === true, 'planned_stop_cap_flag_missing', 'Stop-hit cap should be explicit', stopOutcome);
+
+    const tpOutcome = root.OUTCOME_EVAL.normalizePlannedTradeOutcome({ rr: 2.5 }, 30, false, true, 100, 95, 112.5);
+    assert(tpOutcome.rawCheckpointR === 30, 'raw_checkpoint_tp_not_preserved', 'Raw checkpoint R must preserve TP follow-through excursion', tpOutcome);
+    assert(tpOutcome.plannedTradeR === 2.5, 'planned_tp_not_capped_to_rr', 'TP1 planned trade outcome must cap at signal RR', tpOutcome);
+    assert(tpOutcome.plannedTradeVerdict === 'winner', 'planned_tp_verdict_wrong', 'TP1 planned trade verdict should be winner', tpOutcome);
+    checks.push({ scenario: 'outcome_semantics_normalization', passed: true });
+
+    await withMockedDb(fixtures, async function() {
+      const report = await root.OUTCOME_EVAL.getOutcomeAttributionReport();
+      assert(report.ok === true, 'outcome_attribution_report_not_ok', 'Outcome attribution report must be available as read-only analytics', report);
+      assert(report.reportType === 'read_only_outcome_attribution', 'outcome_attribution_not_read_only', 'Outcome attribution report must be explicitly read-only', report);
+      assert(String(report.metricSemantics?.primary || '').includes('plannedTradeR'), 'attribution_primary_metric_regression', 'Outcome attribution primary metric must be plannedTradeR', report.metricSemantics);
+      assert(String(report.metricSemantics?.secondary || '').includes('rawCheckpointR'), 'attribution_secondary_metric_regression', 'Outcome attribution secondary metric must be rawCheckpointR', report.metricSemantics);
+      assert(String(report.metricSemantics?.legacy || '').includes('actualR'), 'attribution_legacy_metric_regression', 'Outcome attribution must preserve actualR as raw checkpoint MTM', report.metricSemantics);
+      assert(report.sampleConfidence?.level === 'very_low_confidence' && report.sampleConfidence?.shouldWarn === true, 'attribution_sample_guardrail_missing', 'Low sample attribution reports must expose a no-tuning warning guardrail', report.sampleConfidence);
+      assert(report.topInsights?.scope === 'Analytics only, no automatic tuning.', 'attribution_top_insights_scope_regression', 'Top Insights must be explicitly analytics-only', report.topInsights);
+      assert((report.byTier || []).some(row => row.key === 'PLAYABLE' && row.total >= 1), 'attribution_tier_missing_playable', 'Tier attribution must include PLAYABLE performance', report.byTier);
+      assert((report.byLearningPool || []).some(row => row.key === 'execution' && row.total >= 1), 'attribution_execution_pool_missing', 'Attribution must include execution pool performance', report.byLearningPool);
+      assert((report.byLearningPool || []).some(row => row.key === 'near_approved' && row.total >= 1), 'attribution_near_pool_missing', 'Attribution must include near-approved pool performance', report.byLearningPool);
+      assert(Array.isArray(report.mbe?.priceZoneQuality), 'attribution_mbe_missing', 'Attribution must include MBE priceZoneQuality buckets', report.mbe);
+      assert(Array.isArray(report.agentReview?.riskFlags), 'attribution_agent_review_missing', 'Attribution must include Agentic Review risk flag buckets', report.agentReview);
+      assert(Array.isArray(report.context?.btcContext), 'attribution_context_missing', 'Attribution must include regime/time context buckets', report.context);
+      assert(Array.isArray(report.rawVsPlannedGaps?.plannedCappedRawRanFurther), 'attribution_gap_missing', 'Attribution must include raw-vs-planned gap cases', report.rawVsPlannedGaps);
+      assert((report.byTier || []).every(row => row.sampleConfidence && typeof row.sampleWarning === 'string'), 'attribution_bucket_guardrails_missing', 'Attribution buckets must carry sample-size guardrails for UI warning display', report.byTier);
+      assert(report.dataQuality?.plannedTradeRCoverage?.count === 1, 'planned_coverage_regression', 'Data Quality must track plannedTradeR coverage separately', report.dataQuality);
+      assert(report.dataQuality?.rawCheckpointRCoverage?.count === 1, 'raw_coverage_regression', 'Data Quality must track rawCheckpointR coverage separately', report.dataQuality);
+      assert(report.dataQuality?.legacyOutcomeCount >= 1, 'legacy_count_regression', 'Data Quality must count legacy outcomes without planned/raw fields', report.dataQuality);
+      const executionPool = report.byLearningPool.find(row => row.key === 'execution');
+      assert(executionPool.avgRawCheckpointR !== executionPool.avgPlannedTradeR, 'planned_raw_not_separated', 'Planned and raw checkpoint metrics must remain separated in attribution analytics', executionPool);
+      const nearPool = report.byLearningPool.find(row => row.key === 'near_approved');
+      assert(nearPool.total >= 2 && nearPool.avgPlannedTradeR === nearPool.avgRawCheckpointR, 'legacy_outcome_not_graceful', 'Old outcomes without plannedTradeR must gracefully fall back to actualR in attribution analytics', nearPool);
+    });
+    checks.push({ scenario: 'outcome_attribution_read_only', passed: true });
 
     const auditSummary = root.RUNTIME_AUDIT.summarizeLatest({
       alertTraceEngine: {

@@ -174,6 +174,8 @@ window.ANALYTICS_ENGINE = (() => {
         if (isWin) catStats[category].wins++;
         if (isLoss) catStats[category].losses++;
         catStats[category].sumR += _num(o.actualR);
+        catStats[category].sumRawCheckpointR = _num(catStats[category].sumRawCheckpointR) + _num(o.rawCheckpointR ?? o.actualR);
+        catStats[category].sumPlannedTradeR = _num(catStats[category].sumPlannedTradeR) + _num(o.plannedTradeR ?? o.actualR);
         catStats[category].sumPct += _num(o.pctChange);
 
         // Aggregate Setup
@@ -182,6 +184,8 @@ window.ANALYTICS_ENGINE = (() => {
         if (isWin) setupStats[setup].wins++;
         if (isLoss) setupStats[setup].losses++;
         setupStats[setup].sumR += _num(o.actualR);
+        setupStats[setup].sumRawCheckpointR = _num(setupStats[setup].sumRawCheckpointR) + _num(o.rawCheckpointR ?? o.actualR);
+        setupStats[setup].sumPlannedTradeR = _num(setupStats[setup].sumPlannedTradeR) + _num(o.plannedTradeR ?? o.actualR);
         setupStats[setup].sumPct += _num(o.pctChange);
 
         // Aggregate Symbol
@@ -191,6 +195,8 @@ window.ANALYTICS_ENGINE = (() => {
         if (isWin) symbolStats[sym].wins++;
         if (isLoss) symbolStats[sym].losses++;
         symbolStats[sym].sumR += _num(o.actualR);
+        symbolStats[sym].sumRawCheckpointR = _num(symbolStats[sym].sumRawCheckpointR) + _num(o.rawCheckpointR ?? o.actualR);
+        symbolStats[sym].sumPlannedTradeR = _num(symbolStats[sym].sumPlannedTradeR) + _num(o.plannedTradeR ?? o.actualR);
 
         // Aggregate Source
         if (!sourceStats[source]) sourceStats[source] = { wins: 0, losses: 0, total: 0, sumR: 0, sumPct: 0 };
@@ -198,6 +204,8 @@ window.ANALYTICS_ENGINE = (() => {
         if (isWin) sourceStats[source].wins++;
         if (isLoss) sourceStats[source].losses++;
         sourceStats[source].sumR += _num(o.actualR);
+        sourceStats[source].sumRawCheckpointR = _num(sourceStats[source].sumRawCheckpointR) + _num(o.rawCheckpointR ?? o.actualR);
+        sourceStats[source].sumPlannedTradeR = _num(sourceStats[source].sumPlannedTradeR) + _num(o.plannedTradeR ?? o.actualR);
 
         // Aggregate Hour
         if (!hourStats[hour]) hourStats[hour] = { wins: 0, losses: 0, total: 0, sumR: 0, sumPct: 0 };
@@ -205,6 +213,8 @@ window.ANALYTICS_ENGINE = (() => {
         if (isWin) hourStats[hour].wins++;
         if (isLoss) hourStats[hour].losses++;
         hourStats[hour].sumR += _num(o.actualR);
+        hourStats[hour].sumRawCheckpointR = _num(hourStats[hour].sumRawCheckpointR) + _num(o.rawCheckpointR ?? o.actualR);
+        hourStats[hour].sumPlannedTradeR = _num(hourStats[hour].sumPlannedTradeR) + _num(o.plannedTradeR ?? o.actualR);
       }
 
       // Compute final percentages
@@ -218,6 +228,9 @@ window.ANALYTICS_ENGINE = (() => {
             losses: st.losses,
             winRate: Number((st.wins / st.total * 100).toFixed(1)),
             avgR: Number((st.sumR / st.total).toFixed(3)),
+            avgRawCheckpointR: Number((_num(st.sumRawCheckpointR, st.sumR) / st.total).toFixed(3)),
+            avgPlannedTradeR: Number((_num(st.sumPlannedTradeR, st.sumR) / st.total).toFixed(3)),
+            avgRMode: 'raw_checkpoint_mtm',
             avgPct: Number((st.sumPct / st.total).toFixed(2))
           };
         }

@@ -82,6 +82,7 @@ window.EXECUTION_ENGINE_V9 = (() => {
     PARTIAL_EXIT: 'PARTIAL_EXIT',
     CLOSED_WIN: 'CLOSED_WIN',
     CLOSED_LOSS: 'CLOSED_LOSS',
+    EXPIRED: 'EXPIRED',
     TIMED_OUT_EXIT: 'TIMED_OUT_EXIT',
     INVALIDATED: 'INVALIDATED',
     REJECTED_STATE: 'REJECTED_STATE', // Alpha Guard: logic/flow error
@@ -89,7 +90,7 @@ window.EXECUTION_ENGINE_V9 = (() => {
 
   /* ── Open state set (used throughout) ──────────────────────────────── */
   const OPEN_STATES = new Set([POS_STATE.ARMED, POS_STATE.PENDING, POS_STATE.ACTIVE, POS_STATE.PARTIAL_EXIT]);
-  const CLOSED_STATES = new Set([POS_STATE.CLOSED_WIN, POS_STATE.CLOSED_LOSS, POS_STATE.EXPIRED, POS_STATE.INVALIDATED]);
+  const CLOSED_STATES = new Set([POS_STATE.CLOSED_WIN, POS_STATE.CLOSED_LOSS, POS_STATE.EXPIRED, POS_STATE.TIMED_OUT_EXIT, POS_STATE.INVALIDATED]);
 
   /* ── Strict Trigger Whitelist (patch req #6) ─────────────────────── */
 
